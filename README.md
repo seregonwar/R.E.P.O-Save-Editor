@@ -74,7 +74,7 @@ The application has been designed with a modern, intuitive, and elegant interfac
 
 ### Direct Download
 
-1. Download the latest version from the [Releases page](https://github.com/N0edL/R.E.P.O-Save-Editor/releases)
+1. Download the latest version from the [Releases page](https://github.com/seregonwar/R.E.P.O-Save-Editor/releases)
 2. Extract the ZIP file to a folder of your choice
 3. Run the `REPO Save Editor.exe` file
 
