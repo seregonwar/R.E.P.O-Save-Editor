@@ -1,4 +1,4 @@
-# <img src="./reposaveeditor.png" alt="Icon" width="40" style="vertical-align: middle;"> R.E.P.O Save Editor
+# <img src="https://github.com/seregonwar/R.E.P.O-Save-Editor/blob/main/assets/icons/reposaveeditor.png" alt="Icon" width="40" style="vertical-align: middle;"> R.E.P.O Save Editor
 
 <div align="center">
 
@@ -8,7 +8,7 @@
 
 **A powerful editor for R.E.P.O save files**
 
-<img src="./reposaveeditor.png" alt="R.E.P.O Save Editor logo" width="200">
+<img src="https://github.com/seregonwar/R.E.P.O-Save-Editor/blob/main/assets/icons/reposaveeditor.png" alt="R.E.P.O Save Editor logo" width="512">
 
 </div>
 
@@ -68,7 +68,8 @@ The application has been designed with a modern, intuitive, and elegant interfac
 
 ## 🖥️ Screenshot
 
-`[Application screenshot here]`
+<img src="https://github.com/user-attachments/assets/9ad4a02a-43da-449b-8904-9531a30d32d9">
+
 
 ## 🔧 Installation
 
