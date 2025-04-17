@@ -1,0 +1,10 @@
+{
+    "theme": "Dark",
+    "language": "Italian",
+    "backup_path": "",
+    "backup_frequency": "Never",
+    "max_backups": 5,
+    "dev_mode": false,
+    "cache_size": 100,
+    "network_timeout": 10
+}
