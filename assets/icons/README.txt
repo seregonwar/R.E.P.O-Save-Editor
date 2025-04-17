@@ -1,9 +1,9 @@
-Questo è il file README per la directory delle icone.
+This is the README file for the icon directory.
 
-L'icona dell'applicazione 'reposaveeditor.png' deve essere posizionata in questa directory. 
-Se non esiste, l'applicazione mostrerà un placeholder invece dell'icona.
+The application icon 'reposaveeditor.png' must be placed in this directory. 
+If it does not exist, the application will show a placeholder instead of the icon.
 
-Informazioni sull'icona:
-- Dimensioni consigliate: 256x256 pixel
-- Formato: PNG con trasparenza
-- Nome file: reposaveeditor.png 
+Icon information:
+- Recommended size: 256x256 pixels
+- Format: PNG with transparency
+- File name: reposaveeditor.png 
