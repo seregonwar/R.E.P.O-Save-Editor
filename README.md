@@ -68,7 +68,7 @@ The application has been designed with a modern, intuitive, and elegant interfac
 
 ## 🖥️ Screenshot
 
-<img src="https://github.com/user-attachments/assets/9ad4a02a-43da-449b-8904-9531a30d32d9">
+<img src="https://github.com/user-attachments/assets/479f67a3-f37a-49b5-9c85-a8726f9c9522">
 
 
 ## 🔧 Installation
