@@ -3,12 +3,12 @@
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel,
     QLineEdit, QPushButton, QComboBox, QSpinBox, QDoubleSpinBox,
-    QProgressBar, QScrollArea, QGroupBox, QMessageBox,
+    QProgressBar, QScrollArea, QGroupBox, QMessageBox, QInputDialog,
     QTableWidget, QTableWidgetItem, QHeaderView, QFormLayout,
-    QGridLayout, QCheckBox, QFileDialog
+    QGridLayout, QCheckBox, QFileDialog, QTextEdit, QSplitter
 )
 from PyQt6.QtCore import Qt, pyqtSignal
-from PyQt6.QtGui import QIcon, QPixmap, QImage, QPainter, QPen, QColor
+from PyQt6.QtGui import QIcon, QPixmap, QImage, QPainter, QPen, QColor, QSyntaxHighlighter, QTextCharFormat, QFont
 from typing import Dict, Any
 import os
 import json
@@ -17,6 +17,8 @@ from io import BytesIO
 import re
 import xml.etree.ElementTree as ElementTree
 from pathlib import Path
+
+from ..core.language import tr, language_manager
 
 class BaseTab(QWidget):
     """Tab base con funzionalità comuni"""
@@ -33,11 +35,11 @@ class BaseTab(QWidget):
         
     def show_error(self, message):
         """Mostra un messaggio di errore"""
-        QMessageBox.critical(self, "Errore", message)
+        QMessageBox.critical(self, tr("general.error", "Errore"), message)
         
     def show_info(self, message):
         """Mostra un messaggio informativo"""
-        QMessageBox.information(self, "Informazione", message)
+        QMessageBox.information(self, tr("general.info", "Informazione"), message)
 
 class PlayerTab(QWidget):
     """Tab for player data management"""
@@ -51,16 +53,27 @@ class PlayerTab(QWidget):
         self.status_bar = None  # Will be set by the main window
         self.init_ui()
         
+        # Registra per gli aggiornamenti della lingua
+        language_manager.add_observer(self.update_translations)
+        
     def init_ui(self):
         layout = QVBoxLayout()
         
         # Selettore giocatore (partecipante)
         player_select_layout = QHBoxLayout()
-        player_select_layout.addWidget(QLabel("Seleziona Giocatore:"))
+        self.select_player_label = QLabel(tr("player_tab.select_player", "Seleziona Giocatore:"))
+        player_select_layout.addWidget(self.select_player_label)
         
         self.player_selector = QComboBox()
         self.player_selector.currentIndexChanged.connect(self.on_player_changed)
         player_select_layout.addWidget(self.player_selector)
+        
+        # Aggiungi pulsante per nuovo giocatore
+        self.add_player_button = QPushButton("+")
+        self.add_player_button.setToolTip(tr("player_tab.add_player", "Aggiungi Nuovo Giocatore"))
+        self.add_player_button.setFixedWidth(30)
+        self.add_player_button.clicked.connect(self.add_new_player)
+        player_select_layout.addWidget(self.add_player_button)
         
         layout.addLayout(player_select_layout)
         
@@ -70,19 +83,25 @@ class PlayerTab(QWidget):
         # Player info form
         info_form = QFormLayout()
         
+        self.player_name = QLineEdit()
+        self.name_label = QLabel(tr("player_tab.player_name", "Nome:"))
+        info_form.addRow(self.name_label, self.player_name)
         
         self.player_level = QSpinBox()
         self.player_level.setRange(1, 100)
-        info_form.addRow("Level:", self.player_level)
+        self.level_label = QLabel(tr("player_tab.level", "Level:"))
+        info_form.addRow(self.level_label, self.player_level)
         
         self.player_health = QSpinBox()
         self.player_health.setRange(1, 10000)
-        info_form.addRow("Health:", self.player_health)
+        self.health_label = QLabel(tr("player_tab.health", "Health:"))
+        info_form.addRow(self.health_label, self.player_health)
         
         self.player_money = QDoubleSpinBox()
         self.player_money.setRange(0, 1000000)
         self.player_money.setSingleStep(100)
-        info_form.addRow("Money:", self.player_money)
+        self.money_label = QLabel(tr("player_tab.money", "Money:"))
+        info_form.addRow(self.money_label, self.player_money)
         
         info_widget = QWidget()
         info_widget.setLayout(info_form)
@@ -102,12 +121,12 @@ class PlayerTab(QWidget):
         
         steam_id_layout = QHBoxLayout()
         self.steam_id_edit = QLineEdit()
-        self.steam_id_edit.setPlaceholderText("Steam ID (autodection)")
+        self.steam_id_edit.setPlaceholderText(tr("player_tab.steam_id", "Steam ID (autodetection)"))
         self.steam_id_edit.setReadOnly(True)  # Steam ID non modificabile
         self.steam_id_edit.setStyleSheet("background-color: #2a2a2a;")
         steam_id_layout.addWidget(self.steam_id_edit)
         
-        self.load_avatar_button = QPushButton("Reload Avatar")
+        self.load_avatar_button = QPushButton(tr("player_tab.reload_avatar", "Reload Avatar"))
         self.load_avatar_button.clicked.connect(self.load_steam_avatar)
         steam_id_layout.addWidget(self.load_avatar_button)
         
@@ -120,37 +139,139 @@ class PlayerTab(QWidget):
         layout.addLayout(top_layout)
         
         # Stats group
-        stats_group = QGroupBox("Player Stats")
+        self.stats_group = QGroupBox(tr("player_tab.player_stats", "Player Stats"))
         stats_layout = QFormLayout()
         
         self.player_strength = QSpinBox()
         self.player_strength.setRange(1, 100)
-        stats_layout.addRow("Strength:", self.player_strength)
+        self.strength_label = QLabel(tr("player_tab.strength", "Strength:"))
+        stats_layout.addRow(self.strength_label, self.player_strength)
         
         self.player_agility = QSpinBox()
         self.player_agility.setRange(1, 100)
-        stats_layout.addRow("Agility:", self.player_agility)
+        self.agility_label = QLabel(tr("player_tab.agility", "Agility:"))
+        stats_layout.addRow(self.agility_label, self.player_agility)
         
         self.player_intelligence = QSpinBox()
         self.player_intelligence.setRange(1, 100)
-        stats_layout.addRow("Intelligence:", self.player_intelligence)
+        self.intelligence_label = QLabel(tr("player_tab.intelligence", "Intelligence:"))
+        stats_layout.addRow(self.intelligence_label, self.player_intelligence)
         
         self.player_endurance = QSpinBox()
         self.player_endurance.setRange(1, 100)
-        stats_layout.addRow("Endurance:", self.player_endurance)
+        self.endurance_label = QLabel(tr("player_tab.endurance", "Endurance:"))
+        stats_layout.addRow(self.endurance_label, self.player_endurance)
         
-        stats_group.setLayout(stats_layout)
-        layout.addWidget(stats_group)
+        # Aggiungi nuovi campi per le statistiche aggiuntive
+        self.player_extra_jump = QSpinBox()
+        self.player_extra_jump.setRange(0, 10)
+        self.extra_jump_label = QLabel(tr("player_tab.extra_jump", "Extra Jump:"))
+        stats_layout.addRow(self.extra_jump_label, self.player_extra_jump)
+        
+        self.player_launch = QSpinBox()
+        self.player_launch.setRange(0, 10)
+        self.launch_label = QLabel(tr("player_tab.launch", "Launch:"))
+        stats_layout.addRow(self.launch_label, self.player_launch)
+        
+        self.player_map_count = QSpinBox()
+        self.player_map_count.setRange(0, 10)
+        self.map_count_label = QLabel(tr("player_tab.map_count", "Map Count:"))
+        stats_layout.addRow(self.map_count_label, self.player_map_count)
+        
+        self.player_speed = QSpinBox()
+        self.player_speed.setRange(1, 100)
+        self.speed_label = QLabel(tr("player_tab.speed", "Speed:"))
+        stats_layout.addRow(self.speed_label, self.player_speed)
+        
+        self.player_range = QSpinBox()
+        self.player_range.setRange(1, 100)
+        self.range_label = QLabel(tr("player_tab.range", "Range:"))
+        stats_layout.addRow(self.range_label, self.player_range)
+        
+        self.player_throw = QSpinBox()
+        self.player_throw.setRange(1, 100)
+        self.throw_label = QLabel(tr("player_tab.throw", "Throw:"))
+        stats_layout.addRow(self.throw_label, self.player_throw)
+        
+        self.stats_group.setLayout(stats_layout)
+        layout.addWidget(self.stats_group)
         
         # Save button
-        save_button = QPushButton("Save Changes")
-        save_button.clicked.connect(self.save_changes)
-        layout.addWidget(save_button)
+        self.save_button = QPushButton(tr("player_tab.save_changes", "Save Changes"))
+        self.save_button.clicked.connect(self.save_changes)
+        layout.addWidget(self.save_button)
         
         self.setLayout(layout)
         
         # Carica l'avatar default quando il widget è mostrato
         self.show_default_avatar()
+        
+    def update_translations(self):
+        """Aggiorna le traduzioni dell'interfaccia quando cambia la lingua"""
+        self.select_player_label.setText(tr("player_tab.select_player", "Seleziona Giocatore:"))
+        self.add_player_button.setToolTip(tr("player_tab.add_player", "Aggiungi Nuovo Giocatore"))
+        self.name_label.setText(tr("player_tab.player_name", "Nome:"))
+        self.level_label.setText(tr("player_tab.level", "Level:"))
+        self.health_label.setText(tr("player_tab.health", "Health:"))
+        self.money_label.setText(tr("player_tab.money", "Money:"))
+        self.steam_id_edit.setPlaceholderText(tr("player_tab.steam_id", "Steam ID (autodetection)"))
+        self.load_avatar_button.setText(tr("player_tab.reload_avatar", "Reload Avatar"))
+        self.stats_group.setTitle(tr("player_tab.player_stats", "Player Stats"))
+        self.strength_label.setText(tr("player_tab.strength", "Strength:"))
+        self.agility_label.setText(tr("player_tab.agility", "Agility:"))
+        self.intelligence_label.setText(tr("player_tab.intelligence", "Intelligence:"))
+        self.endurance_label.setText(tr("player_tab.endurance", "Endurance:"))
+        self.extra_jump_label.setText(tr("player_tab.extra_jump", "Extra Jump:"))
+        self.launch_label.setText(tr("player_tab.launch", "Launch:"))
+        self.map_count_label.setText(tr("player_tab.map_count", "Map Count:"))
+        self.speed_label.setText(tr("player_tab.speed", "Speed:"))
+        self.range_label.setText(tr("player_tab.range", "Range:"))
+        self.throw_label.setText(tr("player_tab.throw", "Throw:"))
+        self.save_button.setText(tr("player_tab.save_changes", "Save Changes"))
+        
+    def add_new_player(self):
+        """Aggiunge un nuovo giocatore al salvataggio"""
+        if not self.save_data:
+            QMessageBox.warning(
+                self,
+                tr("player_tab.no_save_loaded", "Nessun salvataggio caricato"),
+                tr("player_tab.load_save_first", "Carica prima un salvataggio per aggiungere un nuovo giocatore.")
+            )
+            return
+            
+        # Genera un nuovo ID univoco per il giocatore
+        import uuid
+        new_player_id = str(uuid.uuid4())
+        
+        # Chiedi il nome del nuovo giocatore
+        player_name, ok = QInputDialog.getText(
+            self,
+            tr("player_tab.add_player_title", "Nuovo Giocatore"),
+            tr("player_tab.add_player_prompt", "Inserisci il nome del nuovo giocatore:")
+        )
+        
+        if ok and player_name:
+            # Aggiungi il giocatore al salvataggio
+            if "playerNames" not in self.save_data:
+                self.save_data["playerNames"] = {}
+                
+            self.save_data["playerNames"][new_player_id] = player_name
+            
+            # Aggiungi il giocatore al selettore
+            self.player_selector.addItem(player_name, new_player_id)
+            
+            # Seleziona il nuovo giocatore
+            self.player_selector.setCurrentIndex(self.player_selector.count() - 1)
+            
+            # Aggiorna l'interfaccia
+            self.update_player_data(new_player_id)
+            
+            # Mostra un messaggio di conferma
+            QMessageBox.information(
+                self,
+                tr("general.success", "Successo"),
+                tr("player_tab.player_added", "Giocatore aggiunto con successo!")
+            )
         
     def on_player_changed(self, index):
         """Gestisce il cambio di giocatore selezionato"""
@@ -227,6 +348,25 @@ class PlayerTab(QWidget):
                 if "playerUpgradeSpeed" in player_stats:
                     self.player_endurance.setValue(self.extract_value(player_stats.get("playerUpgradeSpeed"), 10))
                 
+                # Aggiorna le statistiche aggiuntive
+                if "playerUpgradeExtraJump" in player_stats:
+                    self.player_extra_jump.setValue(self.extract_value(player_stats.get("playerUpgradeExtraJump"), 0))
+                
+                if "playerUpgradeLaunch" in player_stats:
+                    self.player_launch.setValue(self.extract_value(player_stats.get("playerUpgradeLaunch"), 0))
+                
+                if "playerUpgradeMapPlayerCount" in player_stats:
+                    self.player_map_count.setValue(self.extract_value(player_stats.get("playerUpgradeMapPlayerCount"), 0))
+                
+                if "playerUpgradeSpeed" in player_stats:
+                    self.player_speed.setValue(self.extract_value(player_stats.get("playerUpgradeSpeed"), 10))
+                
+                if "playerUpgradeRange" in player_stats:
+                    self.player_range.setValue(self.extract_value(player_stats.get("playerUpgradeRange"), 10))
+                
+                if "playerUpgradeThrow" in player_stats:
+                    self.player_throw.setValue(self.extract_value(player_stats.get("playerUpgradeThrow"), 10))
+                
                 # Aggiorna il livello da runStats
                 if "runStats" in dict_data and "level" in dict_data["runStats"]:
                     self.player_level.setValue(self.extract_value(dict_data["runStats"]["level"], 1))
@@ -248,8 +388,8 @@ class PlayerTab(QWidget):
             print(f"Errore durante l'aggiornamento dei dati del giocatore: {str(e)}\n{traceback_str}")
             QMessageBox.warning(
                 self,
-                "Errore aggiornamento dati",
-                f"Impossibile aggiornare i dati del giocatore: {str(e)}"
+                tr("general.error", "Errore"),
+                tr("player_tab.update_error", f"Impossibile aggiornare i dati del giocatore: {str(e)}")
             )
     
     def find_and_set_steam_id(self, player_id):
@@ -346,181 +486,54 @@ class PlayerTab(QWidget):
             
             if os.path.exists(icon_path):
                 pixmap = QPixmap(icon_path)
-                self.avatar_label.setPixmap(pixmap.scaled(90, 90, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
-            else:
-                # Non utilizziamo più app_icon.py
-                self.avatar_label.setText("No Image")
-        except Exception as e:
-            print(f"Warning: Could not load avatar image: {e}")
-            self.avatar_label.setText("No Image")
-
-    def load_steam_avatar(self):
-        """Load the Steam avatar for the provided Steam ID"""
-        import requests
-        import os
-        import xml.etree.ElementTree as ElementTree
-        from pathlib import Path
-        
-        # Create cache directory if it doesn't exist
-        cache_dir = Path(os.environ.get("REPO_SAVE_EDITOR_ROOT", 
-                       os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))) / "cache"
-        if not cache_dir.exists():
-            os.makedirs(cache_dir)
-        
-        steam_id = self.steam_id_edit.text().strip()
-        if not steam_id:
-            # If steam ID field is empty, try to use current player ID
-            if self.current_player_id and str(self.current_player_id).startswith("7656119"):
-                steam_id = self.current_player_id
-                self.steam_id_edit.setText(str(steam_id))
-            else:
-                # Try to extract Steam ID from ES3 file
-                if self.save_data and "dictionaryOfDictionaries" in self.save_data:
-                    try:
-                        # Automatic extraction of Steam ID from ES3 file
-                        dict_data = self.save_data["dictionaryOfDictionaries"]
-                        if isinstance(dict_data, dict) and "value" in dict_data:
-                            dict_data = dict_data["value"]
-                            
-                            # Look for a value that looks like a Steam ID
-                            for key, items in dict_data.items():
-                                if isinstance(items, dict):
-                                    for id_key, value in items.items():
-                                        if isinstance(value, str) and value.isdigit() and len(value) >= 17 and value.startswith("7656119"):
-                                            steam_id = value
-                                            self.steam_id_edit.setText(steam_id)
-                                            break
-                                    if steam_id:
-                                        break
-                    except Exception as e:
-                        print(f"Error extracting Steam ID: {e}")
-                
-                if not steam_id:
-                    self.status_bar.showMessage("No Steam ID found for this player")
+                if not pixmap.isNull():
+                    # Scale to fit the label
+                    pixmap = pixmap.scaled(100, 100, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+                    self.avatar_label.setPixmap(pixmap)
                     return
-        
-        self.status_bar.showMessage(f"Loading Steam avatar for {steam_id}...")
             
-        try:
-            # Check cache first
-            cached_image_path = cache_dir / f"{steam_id}.png"
+            # If file not found, use a placeholder
+            self.avatar_label.setText("No Image")
             
-            if cached_image_path.exists():
-                # Use cached image
-                pixmap = QPixmap(str(cached_image_path))
-                self.avatar_label.setPixmap(pixmap.scaled(90, 90, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
-                
-                self.status_bar.showMessage("Steam avatar loaded from local cache")
-                return
-            
-            # Not in cache, download using XML API
-            url = f"https://steamcommunity.com/profiles/{steam_id}/?xml=1"
-            response = requests.get(url, timeout=10)
-            
-            if response.status_code == 200:
-                try:
-                    tree = ElementTree.fromstring(response.content)
-                    avatar_element = tree.find('avatarFull')  # Use full size avatar
-                    
-                    if avatar_element is not None:
-                        img_url = avatar_element.text
-                        img_response = requests.get(img_url, timeout=10)
-                        
-                        if img_response.status_code == 200:
-                            # Save image to cache
-                            with open(cached_image_path, 'wb') as file:
-                                file.write(img_response.content)
-                            
-                            # Show image
-                            avatar_image = QImage.fromData(img_response.content)
-                            pixmap = QPixmap.fromImage(avatar_image)
-                            self.avatar_label.setPixmap(pixmap.scaled(90, 90, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
-                            
-                            # Save Steam ID in player data
-                            if self.save_data and self.current_player_id:
-                                if "playerMetadata" not in self.save_data:
-                                    self.save_data["playerMetadata"] = {}
-                                
-                                if self.current_player_id not in self.save_data["playerMetadata"]:
-                                    self.save_data["playerMetadata"][self.current_player_id] = {}
-                                
-                                # Check if it's already a dictionary or create a new one
-                                if not isinstance(self.save_data["playerMetadata"][self.current_player_id], dict):
-                                    self.save_data["playerMetadata"][self.current_player_id] = {}
-                                
-                                self.save_data["playerMetadata"][self.current_player_id]["steamId"] = steam_id
-                            
-                            self.status_bar.showMessage("Steam avatar loaded successfully")
-                            return
-                except Exception as e:
-                    print(f"Error processing Steam XML: {e}")
-            
-            # Fallback to direct URL if XML API fails
-            avatar_url = f"https://avatars.steamstatic.com/{steam_id}_full.jpg"
-            avatar_response = requests.get(avatar_url, timeout=5)
-            
-            if avatar_response.status_code == 200:
-                # Save image to cache
-                with open(cached_image_path, 'wb') as file:
-                    file.write(avatar_response.content)
-                
-                # Show image
-                avatar_image = QImage.fromData(avatar_response.content)
-                pixmap = QPixmap.fromImage(avatar_image)
-                self.avatar_label.setPixmap(pixmap.scaled(90, 90, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
-                
-                # Update Steam ID
-                if self.save_data and self.current_player_id:
-                    if "playerMetadata" not in self.save_data:
-                        self.save_data["playerMetadata"] = {}
-                    
-                    if self.current_player_id not in self.save_data["playerMetadata"]:
-                        self.save_data["playerMetadata"][self.current_player_id] = {}
-                    
-                    if not isinstance(self.save_data["playerMetadata"][self.current_player_id], dict):
-                        self.save_data["playerMetadata"][self.current_player_id] = {}
-                    
-                    self.save_data["playerMetadata"][self.current_player_id]["steamId"] = steam_id
-                
-                self.status_bar.showMessage("Steam avatar loaded using direct URL")
-                return
-            
-            # If we get here, all attempts failed, use default icon
-            root_dir = os.environ.get("REPO_SAVE_EDITOR_ROOT", os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-            icon_path = os.path.join(root_dir, "assets", "icons", "reposaveeditor.png")
-            
-            if os.path.exists(icon_path):
-                pixmap = QPixmap(icon_path)
-                self.avatar_label.setPixmap(pixmap.scaled(90, 90, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
-                
-                # Still update Steam ID if available
-                if self.save_data and self.current_player_id and steam_id:
-                    if "playerMetadata" not in self.save_data:
-                        self.save_data["playerMetadata"] = {}
-                    
-                    if self.current_player_id not in self.save_data["playerMetadata"]:
-                        self.save_data["playerMetadata"][self.current_player_id] = {}
-                    
-                    if not isinstance(self.save_data["playerMetadata"][self.current_player_id], dict):
-                        self.save_data["playerMetadata"][self.current_player_id] = {}
-                    
-                    self.save_data["playerMetadata"][self.current_player_id]["steamId"] = steam_id
-            else:
-                self.avatar_label.setText("No Image")
-            
-            self.status_bar.showMessage("Steam API unreachable, using application icon as avatar")
-                
         except Exception as e:
-            self.status_bar.showMessage(f"Error loading avatar: {str(e)}")
-            self.avatar_label.setText("Avatar Error")
+            print(f"Error loading default avatar: {str(e)}")
+            self.avatar_label.setText("No Image")
+            
+    def load_steam_avatar(self):
+        try:
+            steam_id = self.current_player_id
+            if not steam_id:
+                self.avatar_label.setText("No Image")
+                return
+            url = f"https://steamcommunity.com/profiles/{steam_id}/?xml=1"
+            response = requests.get(url, timeout=5)
+            if response.status_code == 200:
+                import xml.etree.ElementTree as ET
+                root = ET.fromstring(response.content)
+                avatar_url = root.findtext("avatarFull")
+                if avatar_url:
+                    img_data = requests.get(avatar_url, timeout=5).content
+                    pixmap = QPixmap()
+                    if pixmap.loadFromData(img_data):
+                        pixmap = pixmap.scaled(100, 100, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+                        self.avatar_label.setPixmap(pixmap)
+                        self.avatar_label.setText("")
+                        return
+            # Se qualcosa va storto, mostra placeholder
+            self.avatar_label.setPixmap(QPixmap())
+            self.avatar_label.setText("No Image")
+        except Exception as e:
+            print(f"Errore caricamento avatar Steam: {e}")
+            self.avatar_label.setPixmap(QPixmap())
+            self.avatar_label.setText("No Image")
         
     def save_changes(self):
         """Save changes to player data"""
         if not self.save_data or not self.current_player_id:
             QMessageBox.warning(
                 self,
-                "No Data Loaded",
-                "No save data to update. Please load a save file first."
+                tr("general.warning", "Attenzione"),
+                tr("player_tab.no_data", "No save data to update. Please load a save file first.")
             )
             return
             
@@ -556,10 +569,17 @@ class PlayerTab(QWidget):
             agility = self.player_agility.value()
             intelligence = self.player_intelligence.value()
             endurance = self.player_endurance.value()
+            extra_jump = self.player_extra_jump.value()
+            launch = self.player_launch.value()
+            map_count = self.player_map_count.value()
+            speed = self.player_speed.value()
+            range_val = self.player_range.value()
+            throw = self.player_throw.value()
             
             # Log dei valori da salvare
             print(f"Valori da salvare - Livello: {level}, Salute: {health}, Soldi: {money}")
             print(f"Statistiche - Forza: {strength}, Agilità: {agility}, Intelligenza: {intelligence}, Resistenza: {endurance}")
+            print(f"Statistiche aggiuntive - Extra Jump: {extra_jump}, Launch: {launch}, Map Count: {map_count}, Speed: {speed}, Range: {range_val}, Throw: {throw}")
             
             # Update stats in the data
             # Prima proviamo a salvare nelle strutture statistiche appropriate
@@ -581,7 +601,13 @@ class PlayerTab(QWidget):
                 "playerUpgradeHealth": strength,
                 "playerUpgradeStamina": agility,
                 "playerUpgradeStrength": intelligence,
-                "playerUpgradeSpeed": endurance
+                "playerUpgradeSpeed": endurance,
+                "playerUpgradeExtraJump": extra_jump,
+                "playerUpgradeLaunch": launch,
+                "playerUpgradeMapPlayerCount": map_count,
+                "playerUpgradeSpeed": speed,
+                "playerUpgradeRange": range_val,
+                "playerUpgradeThrow": throw
             }
             
             for stat_key, value in stat_mappings.items():
@@ -597,7 +623,13 @@ class PlayerTab(QWidget):
                 "strength": strength,
                 "agility": agility,
                 "intelligence": intelligence,
-                "endurance": endurance
+                "endurance": endurance,
+                "extra_jump": extra_jump,
+                "launch": launch,
+                "map_count": map_count,
+                "speed": speed,
+                "range": range_val,
+                "throw": throw
             }
             
             for key, value in stats_to_update.items():
@@ -621,12 +653,12 @@ class PlayerTab(QWidget):
             
             # Conferma del salvataggio
             print("Modifiche applicate con successo al modello di dati")
-            self.status_bar.showMessage("Modifiche salvate con successo")
+            self.status_bar.showMessage(tr("player_tab.changes_saved", "Modifiche salvate con successo"))
             
             QMessageBox.information(
                 self,
-                "Success",
-                "Player data updated successfully!"
+                tr("general.success", "Successo"),
+                tr("player_tab.changes_saved", "Player data updated successfully!")
             )
             
         except Exception as e:
@@ -635,8 +667,8 @@ class PlayerTab(QWidget):
             print(f"Errore durante il salvataggio: {str(e)}\n{error_trace}")
             QMessageBox.critical(
                 self,
-                "Error Saving Data",
-                f"An error occurred while saving player data: {str(e)}"
+                tr("general.error", "Errore"),
+                tr("player_tab.save_error", f"An error occurred while saving player data: {str(e)}")
             )
     
     def update_data(self, data: Dict[str, Any]):
@@ -646,6 +678,8 @@ class PlayerTab(QWidget):
         Args:
             data: Save data
         """
+        if data is None:
+            return
         try:
             self.save_data = data
             self.player_data = {}
@@ -686,8 +720,8 @@ class PlayerTab(QWidget):
             else:
                 QMessageBox.warning(
                     self,
-                    "Nessun giocatore",
-                    "Nessun giocatore trovato nel salvataggio."
+                    tr("general.warning", "Attenzione"),
+                    tr("player_tab.no_players", "Nessun giocatore trovato nel salvataggio.")
                 )
                 
         except Exception as e:
@@ -696,8 +730,8 @@ class PlayerTab(QWidget):
             print(f"Errore durante l'aggiornamento dei dati: {str(e)}\n{traceback_str}")
             QMessageBox.warning(
                 self,
-                "Data Update Error",
-                f"Failed to update player data: {str(e)}"
+                tr("general.error", "Errore"),
+                tr("player_tab.update_error", f"Failed to update player data: {str(e)}")
             )
 
     def extract_player_name(self, player_name_data, player_id):
@@ -769,53 +803,65 @@ class InventoryTab(QWidget):
         self.status_bar = None  # Will be set by the main window
         self.init_ui()
         
+        # Registra per gli aggiornamenti della lingua
+        language_manager.add_observer(self.update_translations)
+        
     def init_ui(self):
         layout = QVBoxLayout()
         
         # Inventory table
         self.inventory_table = QTableWidget()
         self.inventory_table.setColumnCount(4)
-        self.inventory_table.setHorizontalHeaderLabels(["ID", "Name", "Quantity", "Description"])
+        self.inventory_table.setHorizontalHeaderLabels([
+            tr("inventory_tab.id", "ID"), 
+            tr("inventory_tab.name", "Name"), 
+            tr("inventory_tab.quantity", "Quantity"), 
+            tr("inventory_tab.description", "Description")
+        ])
         self.inventory_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         layout.addWidget(self.inventory_table)
         
         # Edit panel
-        edit_group = QGroupBox("Edit Item")
+        self.edit_group = QGroupBox(tr("inventory_tab.edit_item", "Edit Item"))
         edit_layout = QFormLayout()
         
         self.item_id_edit = QLineEdit()
         self.item_id_edit.setReadOnly(True)
-        edit_layout.addRow("ID:", self.item_id_edit)
+        self.id_label = QLabel(tr("inventory_tab.id", "ID:"))
+        edit_layout.addRow(self.id_label, self.item_id_edit)
         
         self.item_name_edit = QLineEdit()
-        edit_layout.addRow("Name:", self.item_name_edit)
+        self.name_label = QLabel(tr("inventory_tab.name", "Name:"))
+        edit_layout.addRow(self.name_label, self.item_name_edit)
         
         self.item_quantity_spin = QSpinBox()
         self.item_quantity_spin.setRange(0, 9999)
-        edit_layout.addRow("Quantity:", self.item_quantity_spin)
+        self.quantity_label = QLabel(tr("inventory_tab.quantity", "Quantity:"))
+        edit_layout.addRow(self.quantity_label, self.item_quantity_spin)
         
         self.item_description_edit = QLineEdit()
-        edit_layout.addRow("Description:", self.item_description_edit)
+        self.description_label = QLabel(tr("inventory_tab.description", "Description:"))
+        edit_layout.addRow(self.description_label, self.item_description_edit)
         
-        edit_group.setLayout(edit_layout)
-        layout.addWidget(edit_group)
+        self.edit_group.setLayout(edit_layout)
+        layout.addWidget(self.edit_group)
         
         # Buttons
         buttons_layout = QHBoxLayout()
         
-        self.add_button = QPushButton("Add Item")
+        self.add_button = QPushButton(tr("inventory_tab.add_item", "Add Item"))
         self.add_button.clicked.connect(self.add_item)
         buttons_layout.addWidget(self.add_button)
         
-        self.update_button = QPushButton("Update Item")
+        self.update_button = QPushButton(tr("inventory_tab.update_item", "Update Item"))
         self.update_button.clicked.connect(self.update_item)
         buttons_layout.addWidget(self.update_button)
         
-        self.remove_button = QPushButton("Remove Item")
+        self.remove_button = QPushButton(tr("inventory_tab.remove_item", "Remove Item"))
         self.remove_button.clicked.connect(self.remove_item)
         buttons_layout.addWidget(self.remove_button)
         
-        self.save_button = QPushButton("Save Changes")
+        self.save_button = QPushButton(tr("inventory_tab.save_changes", "Save Changes"))
         self.save_button.clicked.connect(self.save_changes)
         buttons_layout.addWidget(self.save_button)
         
@@ -824,6 +870,29 @@ class InventoryTab(QWidget):
         
         # Connect signals
         self.inventory_table.itemSelectionChanged.connect(self.on_selection_changed)
+        
+    def update_translations(self):
+        """Aggiorna le traduzioni dell'interfaccia quando cambia la lingua"""
+        # Aggiorna le intestazioni della tabella
+        self.inventory_table.setHorizontalHeaderLabels([
+            tr("inventory_tab.id", "ID"), 
+            tr("inventory_tab.name", "Name"), 
+            tr("inventory_tab.quantity", "Quantity"), 
+            tr("inventory_tab.description", "Description")
+        ])
+        
+        # Aggiorna le etichette del form di modifica
+        self.edit_group.setTitle(tr("inventory_tab.edit_item", "Edit Item"))
+        self.id_label.setText(tr("inventory_tab.id", "ID:"))
+        self.name_label.setText(tr("inventory_tab.name", "Name:"))
+        self.quantity_label.setText(tr("inventory_tab.quantity", "Quantity:"))
+        self.description_label.setText(tr("inventory_tab.description", "Description:"))
+        
+        # Aggiorna i pulsanti
+        self.add_button.setText(tr("inventory_tab.add_item", "Add Item"))
+        self.update_button.setText(tr("inventory_tab.update_item", "Update Item"))
+        self.remove_button.setText(tr("inventory_tab.remove_item", "Remove Item"))
+        self.save_button.setText(tr("inventory_tab.save_changes", "Save Changes"))
         
     def on_selection_changed(self):
         """Gestisce il cambio di selezione nella tabella"""
@@ -853,6 +922,8 @@ class InventoryTab(QWidget):
         Args:
             data: Dati del salvataggio
         """
+        if data is None:
+            return
         try:
             self.save_data = data
             self.inventory_data = {}
@@ -871,1583 +942,848 @@ class InventoryTab(QWidget):
                     for key in inventory_keys:
                         items = dict_of_dicts[key]
                         for item_id, item_value in items.items():
-                            # Cerca informazioni aggiuntive sull'oggetto
-                            item_name = f"Oggetto {item_id}"
+                            # Estrai i dati dell'oggetto
+                            item_name = item_id
+                            item_quantity = 1
                             item_description = ""
                             
-                            # Controlla se esiste un dizionario con i nomi degli oggetti
-                            if "itemNames" in dict_of_dicts and item_id in dict_of_dicts["itemNames"]:
-                                item_name = dict_of_dicts["itemNames"][item_id]
-                                
-                            # Controlla se esiste un dizionario con le descrizioni degli oggetti
-                            if "itemDescriptions" in dict_of_dicts and item_id in dict_of_dicts["itemDescriptions"]:
-                                item_description = dict_of_dicts["itemDescriptions"][item_id]
-                                
-                            # Salva i dati dell'oggetto
+                            # Prova a estrarre il nome e la quantità
+                            if isinstance(item_value, dict):
+                                if "name" in item_value:
+                                    item_name = item_value["name"]
+                                elif "value" in item_value and isinstance(item_value["value"], dict) and "name" in item_value["value"]:
+                                    item_name = item_value["value"]["name"]
+                                    
+                                if "quantity" in item_value:
+                                    item_quantity = item_value["quantity"]
+                                elif "count" in item_value:
+                                    item_quantity = item_value["count"]
+                                elif "value" in item_value and isinstance(item_value["value"], dict):
+                                    if "quantity" in item_value["value"]:
+                                        item_quantity = item_value["value"]["quantity"]
+                                    elif "count" in item_value["value"]:
+                                        item_quantity = item_value["value"]["count"]
+                                        
+                                if "description" in item_value:
+                                    item_description = item_value["description"]
+                                elif "value" in item_value and isinstance(item_value["value"], dict) and "description" in item_value["value"]:
+                                    item_description = item_value["value"]["description"]
+                            
+                            # Converti i valori in stringhe
+                            item_name = str(item_name)
+                            item_quantity = int(item_quantity) if isinstance(item_quantity, (int, float, str)) and str(item_quantity).isdigit() else 1
+                            item_description = str(item_description)
+                            
+                            # Aggiungi l'oggetto alla tabella
+                            row = self.inventory_table.rowCount()
+                            self.inventory_table.insertRow(row)
+                            self.inventory_table.setItem(row, 0, QTableWidgetItem(str(item_id)))
+                            self.inventory_table.setItem(row, 1, QTableWidgetItem(item_name))
+                            self.inventory_table.setItem(row, 2, QTableWidgetItem(str(item_quantity)))
+                            self.inventory_table.setItem(row, 3, QTableWidgetItem(item_description))
+                            
+                            # Memorizza i dati dell'oggetto
                             self.inventory_data[item_id] = {
                                 "name": item_name,
-                                "quantity": item_value,
+                                "quantity": item_quantity,
                                 "description": item_description,
-                                "source_key": key
+                                "key": key  # Memorizza la chiave dell'inventario
                             }
-                            
-                            # Aggiungi alla tabella
-                            self.add_item_to_table(item_id, item_name, item_value, item_description)
-                else:
-                    # Se non ci sono chiavi specifiche per l'inventario, cerca altri elementi
-                    # che potrebbero essere interpretati come oggetti
-                    
-                    # Esempi di strutture che potrebbero contenere oggetti:
-                    general_items = {}
-                    
-                    if "playerItems" in dict_of_dicts:
-                        general_items.update(dict_of_dicts["playerItems"])
-                        
-                    if "collectibles" in dict_of_dicts:
-                        general_items.update(dict_of_dicts["collectibles"])
-                        
-                    if "resources" in dict_of_dicts:
-                        general_items.update(dict_of_dicts["resources"])
-                    
-                    # Aggiungi gli oggetti trovati
-                    for item_id, item_value in general_items.items():
-                        item_name = f"Oggetto {item_id}"
-                        item_description = ""
-                        
-                        self.inventory_data[item_id] = {
-                            "name": item_name,
-                            "quantity": item_value if isinstance(item_value, int) else 1,
-                            "description": item_description,
-                            "source_key": "generalItems"
-                        }
-                        
-                        # Aggiungi alla tabella
-                        self.add_item_to_table(
-                            item_id, 
-                            item_name, 
-                            item_value if isinstance(item_value, int) else 1, 
-                            item_description
-                        )
-                        
-            # Se non ci sono oggetti, mostra un messaggio
-            if not self.inventory_data:
-                QMessageBox.information(
-                    self,
-                    "Inventario vuoto",
-                    "Nessun oggetto trovato nel salvataggio o la struttura dell'inventario non è supportata."
-                )
                 
+                # Se non ci sono oggetti, mostra un messaggio
+                if self.inventory_table.rowCount() == 0:
+                    QMessageBox.information(
+                        self,
+                        tr("general.info", "Informazione"),
+                        tr("inventory_tab.no_items", "No items found in the save or the inventory structure is not supported.")
+                    )
+            
         except Exception as e:
+            import traceback
+            traceback_str = traceback.format_exc()
+            print(f"Errore durante l'aggiornamento dei dati dell'inventario: {str(e)}\n{traceback_str}")
             QMessageBox.warning(
                 self,
-                "Errore di Aggiornamento",
-                f"Impossibile aggiornare i dati dell'inventario: {str(e)}"
+                tr("general.error", "Errore"),
+                tr("inventory_tab.update_error", f"Failed to update inventory data: {str(e)}")
             )
             
-    def add_item_to_table(self, item_id, name, quantity, description):
-        """
-        Aggiunge un oggetto alla tabella
-        
-        Args:
-            item_id: ID dell'oggetto
-            name: Nome dell'oggetto
-            quantity: Quantità dell'oggetto
-            description: Descrizione dell'oggetto
-        """
-        row = self.inventory_table.rowCount()
-        self.inventory_table.insertRow(row)
-        
-        # Imposta i dati nelle celle
-        self.inventory_table.setItem(row, 0, QTableWidgetItem(str(item_id)))
-        self.inventory_table.setItem(row, 1, QTableWidgetItem(str(name)))
-        self.inventory_table.setItem(row, 2, QTableWidgetItem(str(quantity)))
-        self.inventory_table.setItem(row, 3, QTableWidgetItem(str(description)))
-        
     def add_item(self):
         """Aggiunge un nuovo oggetto all'inventario"""
-        # Genera un nuovo ID (puoi adottare una strategia migliore se necessario)
-        import random
-        new_id = f"item_{random.randint(1000, 9999)}"
-        
-        # Crea un nuovo oggetto con valori predefiniti
-        self.inventory_data[new_id] = {
-            "name": "Nuovo Oggetto",
-            "quantity": 1,
-            "description": "Descrizione dell'oggetto",
-            "source_key": "playerItems"
-        }
-        
-        # Aggiungi alla tabella
-        self.add_item_to_table(
-            new_id,
-            "Nuovo Oggetto",
-            1,
-            "Descrizione dell'oggetto"
-        )
-        
-        # Seleziona la nuova riga
-        self.inventory_table.selectRow(self.inventory_table.rowCount() - 1)
-        
-        QMessageBox.information(
-            self, 
-            "Oggetto Aggiunto", 
-            f"Nuovo oggetto aggiunto con ID: {new_id}"
-        )
-        
-    def update_item(self):
-        """Aggiorna i dati di un oggetto selezionato"""
-        # Controlla se c'è un ID valido
-        item_id = self.item_id_edit.text()
-        if not item_id or item_id not in self.inventory_data:
+        if not self.save_data:
             QMessageBox.warning(
                 self,
-                "Errore di Aggiornamento",
-                "Seleziona prima un oggetto valido dalla tabella."
+                tr("general.warning", "Attenzione"),
+                tr("inventory_tab.no_save_loaded", "Please load a save file first.")
             )
             return
             
-        # Aggiorna i dati in memoria
-        self.inventory_data[item_id]["name"] = self.item_name_edit.text()
-        self.inventory_data[item_id]["quantity"] = self.item_quantity_spin.value()
-        self.inventory_data[item_id]["description"] = self.item_description_edit.text()
+        # Chiedi l'ID del nuovo oggetto
+        item_id, ok = QInputDialog.getText(
+            self,
+            tr("inventory_tab.add_item_title", "New Item"),
+            tr("inventory_tab.add_item_prompt", "Enter the ID of the new item:")
+        )
         
-        # Aggiorna la tabella
-        for row in range(self.inventory_table.rowCount()):
-            if self.inventory_table.item(row, 0).text() == item_id:
-                self.inventory_table.setItem(row, 1, QTableWidgetItem(self.item_name_edit.text()))
-                self.inventory_table.setItem(row, 2, QTableWidgetItem(str(self.item_quantity_spin.value())))
-                self.inventory_table.setItem(row, 3, QTableWidgetItem(self.item_description_edit.text()))
-                break
+        if ok and item_id:
+            # Verifica se l'ID esiste già
+            if item_id in self.inventory_data:
+                QMessageBox.warning(
+                    self,
+                    tr("general.warning", "Attenzione"),
+                    tr("inventory_tab.duplicate_id", "An item with this ID already exists.")
+                )
+                return
                 
+            # Aggiungi l'oggetto alla tabella
+            row = self.inventory_table.rowCount()
+            self.inventory_table.insertRow(row)
+            self.inventory_table.setItem(row, 0, QTableWidgetItem(item_id))
+            self.inventory_table.setItem(row, 1, QTableWidgetItem(item_id))  # Nome uguale all'ID per default
+            self.inventory_table.setItem(row, 2, QTableWidgetItem("1"))  # Quantità 1 per default
+            self.inventory_table.setItem(row, 3, QTableWidgetItem(""))  # Descrizione vuota per default
+            
+            # Seleziona la riga appena aggiunta
+            self.inventory_table.selectRow(row)
+            
+            # Aggiorna i campi di modifica
+            self.item_id_edit.setText(item_id)
+            self.item_name_edit.setText(item_id)
+            self.item_quantity_spin.setValue(1)
+            self.item_description_edit.setText("")
+            
+            # Memorizza i dati dell'oggetto
+            # Usa la prima chiave dell'inventario trovata o crea una nuova
+            inventory_key = None
+            if "dictionaryOfDictionaries" in self.save_data and "value" in self.save_data["dictionaryOfDictionaries"]:
+                dict_of_dicts = self.save_data["dictionaryOfDictionaries"]["value"]
+                inventory_keys = [key for key in dict_of_dicts.keys() if "inventory" in key.lower() or "item" in key.lower()]
+                if inventory_keys:
+                    inventory_key = inventory_keys[0]
+                else:
+                    inventory_key = "playerInventory"
+                    dict_of_dicts[inventory_key] = {}
+            else:
+                if "dictionaryOfDictionaries" not in self.save_data:
+                    self.save_data["dictionaryOfDictionaries"] = {"value": {}}
+                elif "value" not in self.save_data["dictionaryOfDictionaries"]:
+                    self.save_data["dictionaryOfDictionaries"]["value"] = {}
+                    
+                inventory_key = "playerInventory"
+                self.save_data["dictionaryOfDictionaries"]["value"][inventory_key] = {}
+                
+            self.inventory_data[item_id] = {
+                "name": item_id,
+                "quantity": 1,
+                "description": "",
+                "key": inventory_key
+            }
+            
+            QMessageBox.information(
+                self,
+                tr("general.success", "Successo"),
+                tr("inventory_tab.item_added", "Item added successfully. Edit the details and save.")
+            )
+            
+    def update_item(self):
+        """Aggiorna i dati dell'oggetto selezionato"""
+        selected_rows = self.inventory_table.selectedItems()
+        if not selected_rows:
+            return
+            
+        # Prendi la prima riga selezionata
+        row = selected_rows[0].row()
+        
+        # Recupera l'ID dell'oggetto
+        item_id = self.inventory_table.item(row, 0).text()
+        
+        # Aggiorna i dati nella tabella
+        self.inventory_table.item(row, 1).setText(self.item_name_edit.text())
+        self.inventory_table.item(row, 2).setText(str(self.item_quantity_spin.value()))
+        self.inventory_table.item(row, 3).setText(self.item_description_edit.text())
+        
+        # Aggiorna i dati in memoria
+        if item_id in self.inventory_data:
+            self.inventory_data[item_id]["name"] = self.item_name_edit.text()
+            self.inventory_data[item_id]["quantity"] = self.item_quantity_spin.value()
+            self.inventory_data[item_id]["description"] = self.item_description_edit.text()
+            
         QMessageBox.information(
             self,
-            "Oggetto Aggiornato",
-            f"Oggetto {item_id} aggiornato con successo."
+            tr("general.success", "Successo"),
+            tr("inventory_tab.item_updated", "Item updated successfully.")
         )
         
     def remove_item(self):
-        """Rimuove un oggetto dall'inventario"""
-        # Controlla se c'è un ID valido
-        item_id = self.item_id_edit.text()
-        if not item_id or item_id not in self.inventory_data:
-            QMessageBox.warning(
-                self,
-                "Errore di Rimozione",
-                "Seleziona prima un oggetto valido dalla tabella."
-            )
+        """Rimuove l'oggetto selezionato"""
+        selected_rows = self.inventory_table.selectedItems()
+        if not selected_rows:
             return
             
-        # Conferma la rimozione
+        # Prendi la prima riga selezionata
+        row = selected_rows[0].row()
+        
+        # Recupera l'ID dell'oggetto
+        item_id = self.inventory_table.item(row, 0).text()
+        
+        # Chiedi conferma
         reply = QMessageBox.question(
             self,
-            "Conferma Rimozione",
-            f"Sei sicuro di voler rimuovere l'oggetto {item_id}?",
+            tr("general.warning", "Attenzione"),
+            tr("inventory_tab.confirm_remove", "Are you sure you want to remove this item?"),
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No
         )
         
         if reply == QMessageBox.StandardButton.Yes:
-            # Rimuovi dalla struttura dati
-            del self.inventory_data[item_id]
+            # Rimuovi l'oggetto dalla tabella
+            self.inventory_table.removeRow(row)
             
-            # Rimuovi dalla tabella
-            for row in range(self.inventory_table.rowCount()):
-                if self.inventory_table.item(row, 0).text() == item_id:
-                    self.inventory_table.removeRow(row)
-                    break
-                    
-            # Pulisci i campi di modifica
-            self.item_id_edit.clear()
-            self.item_name_edit.clear()
-            self.item_quantity_spin.setValue(0)
-            self.item_description_edit.clear()
-            
+            # Rimuovi l'oggetto dai dati in memoria
+            if item_id in self.inventory_data:
+                del self.inventory_data[item_id]
+                
             QMessageBox.information(
                 self,
-                "Oggetto Rimosso",
-                f"Oggetto {item_id} rimosso con successo."
+                tr("general.success", "Successo"),
+                tr("inventory_tab.item_removed", "Item removed successfully.")
             )
-        
+            
     def save_changes(self):
         """Salva le modifiche all'inventario"""
         if not self.save_data:
             QMessageBox.warning(
                 self,
-                "Nessun dato caricato",
-                "Non ci sono dati da salvare. Carica prima un salvataggio."
+                tr("general.warning", "Attenzione"),
+                tr("inventory_tab.no_save_loaded", "Please load a save file first.")
             )
             return
             
         try:
-            # Aggiorna i dati del salvataggio
+            # Assicurati che la struttura dati esista
+            if "dictionaryOfDictionaries" not in self.save_data:
+                self.save_data["dictionaryOfDictionaries"] = {"value": {}}
+            elif "value" not in self.save_data["dictionaryOfDictionaries"]:
+                self.save_data["dictionaryOfDictionaries"]["value"] = {}
+                
+            dict_of_dicts = self.save_data["dictionaryOfDictionaries"]["value"]
+            
+            # Aggiorna i dati dell'inventario
             for item_id, item_data in self.inventory_data.items():
-                source_key = item_data["source_key"]
-                quantity = item_data["quantity"]
+                inventory_key = item_data["key"]
                 
-                # Assicurati che la struttura dati esista
-                if "dictionaryOfDictionaries" in self.save_data and "value" in self.save_data["dictionaryOfDictionaries"]:
-                    dict_of_dicts = self.save_data["dictionaryOfDictionaries"]["value"]
+                # Assicurati che la chiave dell'inventario esista
+                if inventory_key not in dict_of_dicts:
+                    dict_of_dicts[inventory_key] = {}
                     
-                    # Crea il dizionario se non esiste
-                    if source_key not in dict_of_dicts:
-                        dict_of_dicts[source_key] = {}
+                # Aggiorna o crea l'oggetto
+                dict_of_dicts[inventory_key][item_id] = {
+                    "name": item_data["name"],
+                    "quantity": item_data["quantity"],
+                    "description": item_data["description"]
+                }
+                
+            # Rimuovi gli oggetti che sono stati eliminati
+            for inventory_key in [key for key in dict_of_dicts.keys() if "inventory" in key.lower() or "item" in key.lower()]:
+                for item_id in list(dict_of_dicts[inventory_key].keys()):
+                    if item_id not in self.inventory_data:
+                        del dict_of_dicts[inventory_key][item_id]
                         
-                    # Aggiorna la quantità
-                    dict_of_dicts[source_key][item_id] = quantity
-                    
-                    # Aggiorna nome e descrizione se possibile
-                    if "itemNames" in dict_of_dicts:
-                        dict_of_dicts["itemNames"][item_id] = item_data["name"]
-                        
-                    if "itemDescriptions" in dict_of_dicts:
-                        dict_of_dicts["itemDescriptions"][item_id] = item_data["description"]
-            
             QMessageBox.information(
                 self,
-                "Salvate modifiche",
-                "Le modifiche all'inventario sono state salvate nel salvataggio."
+                tr("general.success", "Successo"),
+                tr("inventory_tab.changes_saved", "Inventory changes have been saved to the save file.")
             )
             
         except Exception as e:
+            import traceback
+            traceback_str = traceback.format_exc()
+            print(f"Errore durante il salvataggio dell'inventario: {str(e)}\n{traceback_str}")
             QMessageBox.critical(
                 self,
-                "Errore di salvataggio",
-                f"Si è verificato un errore durante il salvataggio: {str(e)}"
+                tr("general.error", "Errore"),
+                tr("inventory_tab.save_error", f"An error occurred while saving inventory data: {str(e)}")
             )
 
-class QuestsTab(QWidget):
-    """Tab per la gestione delle missioni"""
+class SettingsTab(QWidget):
+    """Tab for application settings"""
     
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.save_data = None
-        self.quests_data = {}
         self.status_bar = None  # Will be set by the main window
         self.init_ui()
+        
+        # Registra per gli aggiornamenti della lingua
+        language_manager.add_observer(self.update_translations)
         
     def init_ui(self):
         layout = QVBoxLayout()
         
-        # Tabella missioni
-        self.quests_table = QTableWidget()
-        self.quests_table.setColumnCount(4)
-        self.quests_table.setHorizontalHeaderLabels(["ID", "Nome", "Stato", "Azioni"])
-        self.quests_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
-        layout.addWidget(self.quests_table)
+        # General settings
+        self.general_group = QGroupBox(tr("settings_tab.general_settings", "General Settings"))
+        general_layout = QFormLayout()
         
-        # Aggiunta di un pannello di modifica sotto la tabella
-        edit_group = QGroupBox("Modifica Missione")
-        edit_layout = QFormLayout()
+        # Theme
+        self.theme_combo = QComboBox()
+        self.theme_combo.addItem("Dark")
+        self.theme_combo.addItem("Light")
+        self.theme_label = QLabel(tr("settings_tab.theme", "Theme:"))
+        general_layout.addRow(self.theme_label, self.theme_combo)
         
-        self.quest_id_edit = QLineEdit()
-        self.quest_id_edit.setReadOnly(True)
-        edit_layout.addRow("ID:", self.quest_id_edit)
+        # Language
+        self.language_combo = QComboBox()
+        self.language_label = QLabel(tr("settings_tab.language", "Language:"))
+        general_layout.addRow(self.language_label, self.language_combo)
         
-        self.quest_name_edit = QLineEdit()
-        edit_layout.addRow("Nome:", self.quest_name_edit)
+        # Auto backup
+        self.auto_backup_check = QCheckBox(tr("settings_tab.enable", "Enable"))
+        self.auto_backup_label = QLabel(tr("settings_tab.auto_backup", "Auto Backup:"))
+        general_layout.addRow(self.auto_backup_label, self.auto_backup_check)
         
-        self.quest_status_combo = QComboBox()
-        self.quest_status_combo.addItems(["Non completata", "Completata"])
-        edit_layout.addRow("Stato:", self.quest_status_combo)
+        # Backup folder
+        backup_folder_layout = QHBoxLayout()
+        self.backup_folder_edit = QLineEdit()
+        self.backup_folder_edit.setReadOnly(True)
+        self.backup_folder_button = QPushButton(tr("settings_tab.browse", "Browse"))
+        self.backup_folder_button.clicked.connect(self.browse_backup_folder)
+        backup_folder_layout.addWidget(self.backup_folder_edit)
+        backup_folder_layout.addWidget(self.backup_folder_button)
+        self.backup_folder_label = QLabel(tr("settings_tab.backup_folder", "Backup Folder:"))
+        general_layout.addRow(self.backup_folder_label, backup_folder_layout)
         
-        edit_group.setLayout(edit_layout)
-        layout.addWidget(edit_group)
+        self.general_group.setLayout(general_layout)
+        layout.addWidget(self.general_group)
         
-        # Pulsanti
+        # Advanced settings
+        self.advanced_group = QGroupBox(tr("settings_tab.advanced_settings", "Advanced Settings"))
+        advanced_layout = QFormLayout()
+        
+        # Backup count
+        self.backup_count_spin = QSpinBox()
+        self.backup_count_spin.setRange(1, 100)
+        self.backup_count_spin.setValue(5)
+        self.backup_count_label = QLabel(tr("settings_tab.backup_count", "Number of backups to keep:"))
+        advanced_layout.addRow(self.backup_count_label, self.backup_count_spin)
+        
+        # Backup interval
+        self.backup_interval_spin = QSpinBox()
+        self.backup_interval_spin.setRange(1, 60)
+        self.backup_interval_spin.setValue(5)
+        self.backup_interval_label = QLabel(tr("settings_tab.backup_interval", "Auto backup interval:"))
+        advanced_layout.addRow(self.backup_interval_label, self.backup_interval_spin)
+        
+        self.advanced_group.setLayout(advanced_layout)
+        layout.addWidget(self.advanced_group)
+        
+        # Buttons
         buttons_layout = QHBoxLayout()
         
-        self.complete_button = QPushButton("Completa Missione")
-        self.complete_button.clicked.connect(self.complete_quest)
-        buttons_layout.addWidget(self.complete_button)
-        
-        self.reset_button = QPushButton("Reset Missione")
-        self.reset_button.clicked.connect(self.reset_quest)
-        buttons_layout.addWidget(self.reset_button)
-        
-        self.save_button = QPushButton("Salva Modifiche")
-        self.save_button.clicked.connect(self.save_changes)
+        self.save_button = QPushButton(tr("settings_tab.save_settings", "Save Settings"))
+        self.save_button.clicked.connect(self.save_settings)
         buttons_layout.addWidget(self.save_button)
         
-        layout.addLayout(buttons_layout)
-        self.setLayout(layout)
-        
-        # Connetti segnali
-        self.quests_table.itemSelectionChanged.connect(self.on_selection_changed)
-        
-    def on_selection_changed(self):
-        """Gestisce il cambio di selezione nella tabella"""
-        selected_rows = self.quests_table.selectedItems()
-        if not selected_rows:
-            return
-            
-        # Prendi la prima riga selezionata
-        row = selected_rows[0].row()
-        
-        # Recupera i dati della missione dalla tabella
-        quest_id = self.quests_table.item(row, 0).text()
-        quest_name = self.quests_table.item(row, 1).text()
-        quest_status = self.quests_table.item(row, 2).text()
-        
-        # Aggiorna i campi di modifica
-        self.quest_id_edit.setText(quest_id)
-        self.quest_name_edit.setText(quest_name)
-        self.quest_status_combo.setCurrentText(quest_status)
-        
-    def complete_quest(self):
-        """Completa una missione"""
-        # Controlla se c'è un ID valido
-        quest_id = self.quest_id_edit.text()
-        if not quest_id or quest_id not in self.quests_data:
-            QMessageBox.warning(
-                self,
-                "Errore di Completamento",
-                "Seleziona prima una missione valida dalla tabella."
-            )
-            return
-            
-        # Imposta lo stato della missione a "Completata"
-        self.quest_status_combo.setCurrentText("Completata")
-        
-        # Aggiorna la tabella
-        for row in range(self.quests_table.rowCount()):
-            if self.quests_table.item(row, 0).text() == quest_id:
-                self.quests_table.setItem(row, 2, QTableWidgetItem("Completata"))
-                break
-        
-        QMessageBox.information(self, "Completamento", "Missione completata!")
-        
-    def reset_quest(self):
-        """Resetta una missione"""
-        # Controlla se c'è un ID valido
-        quest_id = self.quest_id_edit.text()
-        if not quest_id or quest_id not in self.quests_data:
-            QMessageBox.warning(
-                self,
-                "Errore di Reset",
-                "Seleziona prima una missione valida dalla tabella."
-            )
-            return
-            
-        # Imposta lo stato della missione a "Non completata"
-        self.quest_status_combo.setCurrentText("Non completata")
-        
-        # Aggiorna la tabella
-        for row in range(self.quests_table.rowCount()):
-            if self.quests_table.item(row, 0).text() == quest_id:
-                self.quests_table.setItem(row, 2, QTableWidgetItem("Non completata"))
-                break
-                
-        QMessageBox.information(self, "Reset", "Missione resettata!")
-        
-    def save_changes(self):
-        """Salva le modifiche alle missioni"""
-        if not self.save_data:
-            QMessageBox.warning(
-                self,
-                "Nessun dato caricato",
-                "Non ci sono dati da salvare. Carica prima un salvataggio."
-            )
-            return
-            
-        # Controlla se c'è un ID valido
-        quest_id = self.quest_id_edit.text()
-        if not quest_id or quest_id not in self.quests_data:
-            QMessageBox.warning(
-                self,
-                "Errore di Salvataggio",
-                "Seleziona prima una missione valida dalla tabella."
-            )
-            return
-            
-        try:
-            # Aggiorna i dati in memoria
-            quest_name = self.quest_name_edit.text()
-            quest_status = self.quest_status_combo.currentText() == "Completata"
-            
-            # Aggiorna l'oggetto quests_data
-            self.quests_data[quest_id]["name"] = quest_name
-            self.quests_data[quest_id]["status"] = quest_status
-            
-            # Aggiorna la tabella
-            for row in range(self.quests_table.rowCount()):
-                if self.quests_table.item(row, 0).text() == quest_id:
-                    self.quests_table.setItem(row, 1, QTableWidgetItem(quest_name))
-                    self.quests_table.setItem(row, 2, QTableWidgetItem("Completata" if quest_status else "Non completata"))
-                    break
-            
-            # Aggiorna i dati del salvataggio
-            if "dictionaryOfDictionaries" in self.save_data and "value" in self.save_data["dictionaryOfDictionaries"]:
-                dict_of_dicts = self.save_data["dictionaryOfDictionaries"]["value"]
-                
-                source_key = self.quests_data[quest_id]["source_key"]
-                
-                # Assicurati che il dizionario esista
-                if source_key not in dict_of_dicts:
-                    dict_of_dicts[source_key] = {}
-                    
-                # Aggiorna lo stato della missione
-                dict_of_dicts[source_key][quest_id] = quest_status
-                
-                # Aggiorna anche il nome se possibile
-                if "questNames" in dict_of_dicts:
-                    dict_of_dicts["questNames"][quest_id] = quest_name
-            
-            QMessageBox.information(
-                self,
-                "Successo",
-                "Modifiche salvate con successo!"
-            )
-            
-        except Exception as e:
-            QMessageBox.critical(
-                self,
-                "Errore di salvataggio",
-                f"Si è verificato un errore durante il salvataggio: {str(e)}"
-            )
-        
-    def update_data(self, data: Dict[str, Any]):
-        """
-        Aggiorna i dati delle missioni
-        
-        Args:
-            data: Dati del salvataggio
-        """
-        try:
-            self.save_data = data
-            self.quests_data = {}
-            
-            # Pulisci la tabella
-            self.quests_table.setRowCount(0)
-            
-            # Cerca i dati delle missioni nel salvataggio
-            if "dictionaryOfDictionaries" in data and "value" in data["dictionaryOfDictionaries"]:
-                dict_of_dicts = data["dictionaryOfDictionaries"]["value"]
-                
-                # Cerca le chiavi relative alle missioni
-                quest_keys = [key for key in dict_of_dicts.keys() if "quest" in key.lower() or "mission" in key.lower()]
-                
-                if quest_keys:
-                    for key in quest_keys:
-                        quests = dict_of_dicts[key]
-                        for quest_id, quest_value in quests.items():
-                            # Cerca informazioni aggiuntive sulla missione
-                            quest_name = f"Missione {quest_id}"
-                            quest_status = "Completata" if quest_value else "Non completata"
-                            
-                            # Controlla se esiste un dizionario con i nomi delle missioni
-                            if "questNames" in dict_of_dicts and quest_id in dict_of_dicts["questNames"]:
-                                quest_name = dict_of_dicts["questNames"][quest_id]
-                            
-                            # Salva i dati della missione
-                            self.quests_data[quest_id] = {
-                                "name": quest_name,
-                                "status": quest_value,
-                                "source_key": key
-                            }
-                            
-                            # Aggiungi alla tabella
-                            self.add_quest_to_table(quest_id, quest_name, quest_status)
-                else:
-                    # Se non ci sono chiavi specifiche per le missioni, cerca altri elementi
-                    # che potrebbero essere interpretati come missioni
-                    
-                    # Esempi di strutture che potrebbero contenere missioni:
-                    general_quests = {}
-                    
-                    if "playerQuests" in dict_of_dicts:
-                        general_quests.update(dict_of_dicts["playerQuests"])
-                        
-                    if "missions" in dict_of_dicts:
-                        general_quests.update(dict_of_dicts["missions"])
-                    
-                    # Aggiungi le missioni trovate
-                    for quest_id, quest_value in general_quests.items():
-                        quest_name = f"Missione {quest_id}"
-                        quest_status = "Completata" if quest_value else "Non completata"
-                        
-                        self.quests_data[quest_id] = {
-                            "name": quest_name,
-                            "status": quest_value,
-                            "source_key": "generalQuests"
-                        }
-                        
-                        # Aggiungi alla tabella
-                        self.add_quest_to_table(quest_id, quest_name, quest_status)
-                        
-            # Se non ci sono missioni, mostra un messaggio
-            if not self.quests_data:
-                QMessageBox.information(
-                    self,
-                    "Nessuna missione",
-                    "Nessuna missione trovata nel salvataggio o la struttura delle missioni non è supportata."
-                )
-                
-        except Exception as e:
-            QMessageBox.warning(
-                self,
-                "Errore di Aggiornamento",
-                f"Impossibile aggiornare i dati delle missioni: {str(e)}"
-            )
-            
-    def add_quest_to_table(self, quest_id, name, status):
-        """
-        Aggiunge una missione alla tabella
-        
-        Args:
-            quest_id: ID della missione
-            name: Nome della missione
-            status: Stato della missione
-        """
-        row = self.quests_table.rowCount()
-        self.quests_table.insertRow(row)
-        
-        # Imposta i dati nelle celle
-        self.quests_table.setItem(row, 0, QTableWidgetItem(str(quest_id)))
-        self.quests_table.setItem(row, 1, QTableWidgetItem(str(name)))
-        self.quests_table.setItem(row, 2, QTableWidgetItem(str(status)))
-        
-        # Pulsante azioni (opzionale)
-        action_cell = QTableWidgetItem("Modifica")
-        self.quests_table.setItem(row, 3, action_cell)
-
-class SkillsTab(QWidget):
-    """Tab per la gestione delle abilità"""
-    
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self.save_data = None
-        self.skills_data = {}
-        self.status_bar = None  # Will be set by the main window
-        self.init_ui()
-        
-    def init_ui(self):
-        layout = QVBoxLayout()
-        
-        # Tabella abilità
-        self.skills_table = QTableWidget()
-        self.skills_table.setColumnCount(4)
-        self.skills_table.setHorizontalHeaderLabels(["ID", "Nome", "Livello", "Azioni"])
-        self.skills_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
-        layout.addWidget(self.skills_table)
-        
-        # Aggiunta di un pannello di modifica sotto la tabella
-        edit_group = QGroupBox("Modifica Abilità")
-        edit_layout = QFormLayout()
-        
-        self.skill_id_edit = QLineEdit()
-        self.skill_id_edit.setReadOnly(True)
-        edit_layout.addRow("ID:", self.skill_id_edit)
-        
-        self.skill_name_edit = QLineEdit()
-        edit_layout.addRow("Nome:", self.skill_name_edit)
-        
-        self.skill_level_spin = QSpinBox()
-        self.skill_level_spin.setRange(0, 100)
-        edit_layout.addRow("Livello:", self.skill_level_spin)
-        
-        edit_group.setLayout(edit_layout)
-        layout.addWidget(edit_group)
-        
-        # Pulsanti
-        buttons_layout = QHBoxLayout()
-        
-        self.level_up_button = QPushButton("Aumenta Livello")
-        self.level_up_button.clicked.connect(self.level_up_skill)
-        buttons_layout.addWidget(self.level_up_button)
-        
-        self.reset_button = QPushButton("Reset Abilità")
-        self.reset_button.clicked.connect(self.reset_skill)
+        self.reset_button = QPushButton(tr("settings_tab.reset_defaults", "Reset Defaults"))
+        self.reset_button.clicked.connect(self.reset_defaults)
         buttons_layout.addWidget(self.reset_button)
         
-        self.save_button = QPushButton("Salva Modifiche")
-        self.save_button.clicked.connect(self.save_changes)
-        buttons_layout.addWidget(self.save_button)
-        
         layout.addLayout(buttons_layout)
+        
+        # Info label
+        self.info_label = QLabel(tr("settings_tab.settings_info", "Settings are automatically saved when the application is closed."))
+        self.info_label.setStyleSheet("color: #888; font-style: italic;")
+        layout.addWidget(self.info_label)
+        
         self.setLayout(layout)
         
-        # Connetti segnali
-        self.skills_table.itemSelectionChanged.connect(self.on_selection_changed)
+        # Carica le lingue disponibili
+        self.load_languages()
         
-    def on_selection_changed(self):
-        """Gestisce il cambio di selezione nella tabella"""
-        selected_rows = self.skills_table.selectedItems()
-        if not selected_rows:
-            return
-            
-        # Prendi la prima riga selezionata
-        row = selected_rows[0].row()
+        # Carica le impostazioni
+        self.load_settings()
         
-        # Recupera i dati dell'abilità dalla tabella
-        skill_id = self.skills_table.item(row, 0).text()
-        skill_name = self.skills_table.item(row, 1).text()
-        skill_level = int(self.skills_table.item(row, 2).text())
+    def update_translations(self):
+        """Aggiorna le traduzioni dell'interfaccia quando cambia la lingua"""
+        self.general_group.setTitle(tr("settings_tab.general_settings", "General Settings"))
+        self.theme_label.setText(tr("settings_tab.theme", "Theme:"))
+        self.language_label.setText(tr("settings_tab.language", "Language:"))
+        self.auto_backup_label.setText(tr("settings_tab.auto_backup", "Auto Backup:"))
+        self.auto_backup_check.setText(tr("settings_tab.enable", "Enable"))
+        self.backup_folder_label.setText(tr("settings_tab.backup_folder", "Backup Folder:"))
+        self.backup_folder_button.setText(tr("settings_tab.browse", "Browse"))
+        self.advanced_group.setTitle(tr("settings_tab.advanced_settings", "Advanced Settings"))
+        self.backup_count_label.setText(tr("settings_tab.backup_count", "Number of backups to keep:"))
+        self.backup_interval_label.setText(tr("settings_tab.backup_interval", "Auto backup interval:"))
+        self.save_button.setText(tr("settings_tab.save_settings", "Save Settings"))
+        self.reset_button.setText(tr("settings_tab.reset_defaults", "Reset Defaults"))
+        self.info_label.setText(tr("settings_tab.settings_info", "Settings are automatically saved when the application is closed."))
         
-        # Aggiorna i campi di modifica
-        self.skill_id_edit.setText(skill_id)
-        self.skill_name_edit.setText(skill_name)
-        self.skill_level_spin.setValue(skill_level)
-        
-    def level_up_skill(self):
-        """Aumenta il livello di un'abilità"""
-        # Controlla se c'è un ID valido
-        skill_id = self.skill_id_edit.text()
-        if not skill_id or skill_id not in self.skills_data:
-            QMessageBox.warning(
-                self,
-                "Errore di Aggiornamento",
-                "Seleziona prima un'abilità valida dalla tabella."
-            )
-            return
-            
-        # Aggiorna il livello
-        current_level = self.skill_level_spin.value()
-        if current_level < 100:  # Limite massimo
-            self.skill_level_spin.setValue(current_level + 1)
-            
-            # Aggiorna la tabella
-            for row in range(self.skills_table.rowCount()):
-                if self.skills_table.item(row, 0).text() == skill_id:
-                    self.skills_table.setItem(row, 2, QTableWidgetItem(str(current_level + 1)))
-                    break
-            
-            QMessageBox.information(self, "Livello", "Abilità potenziata al livello " + str(current_level + 1))
-        else:
-            QMessageBox.information(self, "Livello Massimo", "Questa abilità è già al livello massimo!")
-        
-    def reset_skill(self):
-        """Resetta un'abilità"""
-        # Controlla se c'è un ID valido
-        skill_id = self.skill_id_edit.text()
-        if not skill_id or skill_id not in self.skills_data:
-            QMessageBox.warning(
-                self,
-                "Errore di Reset",
-                "Seleziona prima un'abilità valida dalla tabella."
-            )
-            return
-            
-        # Imposta il livello a 1
-        self.skill_level_spin.setValue(1)
-        
-        # Aggiorna la tabella
-        for row in range(self.skills_table.rowCount()):
-            if self.skills_table.item(row, 0).text() == skill_id:
-                self.skills_table.setItem(row, 2, QTableWidgetItem("1"))
-                break
-                
-        QMessageBox.information(self, "Reset", "Abilità resettata al livello 1!")
-        
-    def save_changes(self):
-        """Salva le modifiche alle abilità"""
-        if not self.save_data:
-            QMessageBox.warning(
-                self,
-                "Nessun dato caricato",
-                "Non ci sono dati da salvare. Carica prima un salvataggio."
-            )
-            return
-            
-        # Controlla se c'è un ID valido
-        skill_id = self.skill_id_edit.text()
-        if not skill_id or skill_id not in self.skills_data:
-            QMessageBox.warning(
-                self,
-                "Errore di Salvataggio",
-                "Seleziona prima un'abilità valida dalla tabella."
-            )
-            return
-            
+    def load_languages(self):
+        """Carica le lingue disponibili"""
         try:
-            # Aggiorna i dati in memoria
-            skill_name = self.skill_name_edit.text()
-            skill_level = self.skill_level_spin.value()
+            # Ottieni le lingue disponibili
+            languages = language_manager.get_available_languages()
             
-            # Aggiorna l'oggetto skills_data
-            self.skills_data[skill_id]["name"] = skill_name
-            self.skills_data[skill_id]["level"] = skill_level
+            # Pulisci il combo box
+            self.language_combo.clear()
             
-            # Aggiorna la tabella
-            for row in range(self.skills_table.rowCount()):
-                if self.skills_table.item(row, 0).text() == skill_id:
-                    self.skills_table.setItem(row, 1, QTableWidgetItem(skill_name))
-                    self.skills_table.setItem(row, 2, QTableWidgetItem(str(skill_level)))
+            # Aggiungi le lingue
+            for code, name in languages.items():
+                self.language_combo.addItem(name, code)
+                
+            # Seleziona la lingua corrente
+            current_lang = language_manager.get_current_language()
+            for i in range(self.language_combo.count()):
+                if self.language_combo.itemData(i) == current_lang:
+                    self.language_combo.setCurrentIndex(i)
                     break
-            
-            # Aggiorna i dati del salvataggio
-            if "dictionaryOfDictionaries" in self.save_data and "value" in self.save_data["dictionaryOfDictionaries"]:
-                dict_of_dicts = self.save_data["dictionaryOfDictionaries"]["value"]
-                
-                source_key = self.skills_data[skill_id]["source_key"]
-                
-                # Assicurati che il dizionario esista
-                if source_key not in dict_of_dicts:
-                    dict_of_dicts[source_key] = {}
                     
-                # Aggiorna il livello dell'abilità
-                dict_of_dicts[source_key][skill_id] = skill_level
-                
-                # Aggiorna anche il nome se possibile
-                if "skillNames" in dict_of_dicts:
-                    dict_of_dicts["skillNames"][skill_id] = skill_name
-            
-            QMessageBox.information(
-                self,
-                "Successo",
-                "Modifiche salvate con successo!"
-            )
+            # Connetti il segnale per il cambio di lingua
+            self.language_combo.currentIndexChanged.connect(self.on_language_changed)
             
         except Exception as e:
-            QMessageBox.critical(
-                self,
-                "Errore di salvataggio",
-                f"Si è verificato un errore durante il salvataggio: {str(e)}"
-            )
+            print(f"Errore durante il caricamento delle lingue: {str(e)}")
+            
+    def on_language_changed(self, index):
+        """Gestisce il cambio di lingua"""
+        if index < 0:
+            return
+            
+        # Ottieni il codice della lingua selezionata
+        lang_code = self.language_combo.itemData(index)
         
-    def update_data(self, data: Dict[str, Any]):
-        """
-        Aggiorna i dati delle abilità
+        # Imposta la lingua
+        language_manager.set_language(lang_code)
         
-        Args:
-            data: Dati del salvataggio
-        """
+    def load_settings(self):
+        """Carica le impostazioni"""
         try:
-            self.save_data = data
-            self.skills_data = {}
+            # Trova il percorso del file settings.json
+            root_dir = os.environ.get("REPO_SAVE_EDITOR_ROOT", os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+            settings_path = os.path.join(root_dir, "settings.json")
             
-            # Pulisci la tabella
-            self.skills_table.setRowCount(0)
-            
-            # Cerca i dati delle abilità nel salvataggio
-            if "dictionaryOfDictionaries" in data and "value" in data["dictionaryOfDictionaries"]:
-                dict_of_dicts = data["dictionaryOfDictionaries"]["value"]
-                
-                # Cerca le chiavi relative alle abilità
-                skill_keys = [key for key in dict_of_dicts.keys() if "skill" in key.lower() or "ability" in key.lower()]
-                
-                if skill_keys:
-                    for key in skill_keys:
-                        skills = dict_of_dicts[key]
-                        for skill_id, skill_value in skills.items():
-                            # Cerca informazioni aggiuntive sull'abilità
-                            skill_name = f"Abilità {skill_id}"
-                            skill_level = skill_value if isinstance(skill_value, int) else 1
-                            
-                            # Controlla se esiste un dizionario con i nomi delle abilità
-                            if "skillNames" in dict_of_dicts and skill_id in dict_of_dicts["skillNames"]:
-                                skill_name = dict_of_dicts["skillNames"][skill_id]
-                            
-                            # Salva i dati dell'abilità
-                            self.skills_data[skill_id] = {
-                                "name": skill_name,
-                                "level": skill_level,
-                                "source_key": key
-                            }
-                            
-                            # Aggiungi alla tabella
-                            self.add_skill_to_table(skill_id, skill_name, skill_level)
-                else:
-                    # Se non ci sono chiavi specifiche per le abilità, cerca altri elementi
-                    # che potrebbero essere interpretati come abilità
+            if os.path.exists(settings_path):
+                with open(settings_path, "r") as f:
+                    settings = json.load(f)
                     
-                    # Esempi di strutture che potrebbero contenere abilità:
-                    general_skills = {}
+                # Imposta il tema
+                if "theme" in settings:
+                    theme_index = 0 if settings["theme"] == "dark" else 1
+                    self.theme_combo.setCurrentIndex(theme_index)
                     
-                    if "playerSkills" in dict_of_dicts:
-                        general_skills.update(dict_of_dicts["playerSkills"])
-                        
-                    if "abilities" in dict_of_dicts:
-                        general_skills.update(dict_of_dicts["abilities"])
+                # Imposta il backup automatico
+                if "auto_backup" in settings:
+                    self.auto_backup_check.setChecked(settings["auto_backup"])
                     
-                    # Aggiungi le abilità trovate
-                    for skill_id, skill_value in general_skills.items():
-                        skill_name = f"Abilità {skill_id}"
-                        skill_level = skill_value if isinstance(skill_value, int) else 1
-                        
-                        self.skills_data[skill_id] = {
-                            "name": skill_name,
-                            "level": skill_level,
-                            "source_key": "generalSkills"
-                        }
-                        
-                        # Aggiungi alla tabella
-                        self.add_skill_to_table(skill_id, skill_name, skill_level)
-                        
-            # Se non ci sono abilità, mostra un messaggio
-            if not self.skills_data:
-                QMessageBox.information(
-                    self,
-                    "Nessuna abilità",
-                    "Nessuna abilità trovata nel salvataggio o la struttura delle abilità non è supportata."
-                )
+                # Imposta la cartella di backup
+                if "backup_path" in settings:
+                    self.backup_folder_edit.setText(settings["backup_path"])
+                    
+                # Imposta il numero di backup
+                if "backup_count" in settings:
+                    self.backup_count_spin.setValue(settings["backup_count"])
+                    
+                # Imposta l'intervallo di backup
+                if "backup_interval" in settings:
+                    self.backup_interval_spin.setValue(settings["backup_interval"])
+            else:
+                # Impostazioni predefinite
+                self.theme_combo.setCurrentIndex(0)  # Dark
+                self.auto_backup_check.setChecked(True)
+                self.backup_folder_edit.setText(os.path.join(root_dir, "backups"))
+                self.backup_count_spin.setValue(5)
+                self.backup_interval_spin.setValue(5)
                 
         except Exception as e:
-            QMessageBox.warning(
-                self,
-                "Errore di Aggiornamento",
-                f"Impossibile aggiornare i dati delle abilità: {str(e)}"
-            )
+            print(f"Errore durante il caricamento delle impostazioni: {str(e)}")
             
-    def add_skill_to_table(self, skill_id, name, level):
-        """
-        Aggiunge un'abilità alla tabella
-        
-        Args:
-            skill_id: ID dell'abilità
-            name: Nome dell'abilità
-            level: Livello dell'abilità
-        """
-        row = self.skills_table.rowCount()
-        self.skills_table.insertRow(row)
-        
-        # Imposta i dati nelle celle
-        self.skills_table.setItem(row, 0, QTableWidgetItem(str(skill_id)))
-        self.skills_table.setItem(row, 1, QTableWidgetItem(str(name)))
-        self.skills_table.setItem(row, 2, QTableWidgetItem(str(level)))
-        
-        # Pulsante azioni (opzionale)
-        action_cell = QTableWidgetItem("Modifica")
-        self.skills_table.setItem(row, 3, action_cell)
-
-class MapTab(QWidget):
-    """Tab per la visualizzazione e modifica della mappa"""
-    
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self.save_data = None
-        self.map_areas = {}  # Dictionary of map areas {id: {name, status, coordinates}}
-        self.status_bar = None  # Will be set by the main window
-        self.init_ui()
-        
-    def init_ui(self):
-        layout = QVBoxLayout()
-        
-        # Map viewer with selection area
-        map_group = QGroupBox("Map View")
-        map_layout = QVBoxLayout()
-        
-        # Map visualization
-        self.map_view = QLabel()
-        self.map_view.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.map_view.setMinimumHeight(300)
-        self.map_view.setStyleSheet("background-color: #1a1a1a; border-radius: 5px;")
-        map_layout.addWidget(self.map_view)
-        
-        # Areas table
-        self.areas_table = QTableWidget()
-        self.areas_table.setColumnCount(4)
-        self.areas_table.setHorizontalHeaderLabels(["ID", "Name", "Status", "Actions"])
-        self.areas_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
-        map_layout.addWidget(self.areas_table)
-        
-        # Pannello di modifica delle aree
-        area_group = QGroupBox("Modifica Area")
-        area_layout = QFormLayout()
-        
-        self.area_id_edit = QLineEdit()
-        self.area_id_edit.setReadOnly(True)
-        area_layout.addRow("ID:", self.area_id_edit)
-        
-        self.area_name_edit = QLineEdit()
-        area_layout.addRow("Name:", self.area_name_edit)
-        
-        self.area_status_combo = QComboBox()
-        self.area_status_combo.addItems(["Locked", "Unlocked", "Completed"])
-        area_layout.addRow("Status:", self.area_status_combo)
-        
-        # Area coordinates
-        coords_layout = QHBoxLayout()
-        
-        self.area_x_spin = QSpinBox()
-        self.area_x_spin.setRange(-1000, 1000)
-        coords_layout.addWidget(QLabel("X:"))
-        coords_layout.addWidget(self.area_x_spin)
-        
-        self.area_y_spin = QSpinBox()
-        self.area_y_spin.setRange(-1000, 1000)
-        coords_layout.addWidget(QLabel("Y:"))
-        coords_layout.addWidget(self.area_y_spin)
-        
-        # Create a container widget for the coordinates layout
-        coords_container = QWidget()
-        coords_container.setLayout(coords_layout)
-        
-        area_layout.addRow("Coordinates:", coords_container)
-        
-        area_group.setLayout(area_layout)
-        
-        map_group.setLayout(map_layout)
-        
-        # Aggiungi gruppi al layout
-        layout.addWidget(map_group)
-        layout.addWidget(area_group)
-        
-        # Pulsanti
-        buttons_layout = QHBoxLayout()
-        
-        self.unlock_button = QPushButton("Unlock Area")
-        self.unlock_button.clicked.connect(self.unlock_area)
-        buttons_layout.addWidget(self.unlock_button)
-        
-        self.reset_button = QPushButton("Reset Map")
-        self.reset_button.clicked.connect(self.reset_map)
-        buttons_layout.addWidget(self.reset_button)
-        
-        self.save_button = QPushButton("Save Changes")
-        self.save_button.clicked.connect(self.save_changes)
-        buttons_layout.addWidget(self.save_button)
-        
-        layout.addLayout(buttons_layout)
-        self.setLayout(layout)
-        
-        # Connetti segnali
-        self.areas_table.itemSelectionChanged.connect(self.on_area_selected)
-        
-    def on_area_selected(self):
-        """Gestisce la selezione di un'area della mappa"""
-        selected_rows = self.areas_table.selectedItems()
-        if not selected_rows:
-            return
-            
-        # Ottieni la riga selezionata
-        row = selected_rows[0].row()
-        
-        # Recupera i dati dell'area dalla tabella
-        area_id = self.areas_table.item(row, 0).text()
-        
-        if area_id in self.map_areas:
-            area_data = self.map_areas[area_id]
-            
-            # Aggiorna i campi di modifica
-            self.area_id_edit.setText(area_id)
-            self.area_name_edit.setText(area_data.get("name", f"Area {area_id}"))
-            
-            # Imposta lo stato
-            status_text = "Locked"
-            if area_data.get("status") == 1:
-                status_text = "Unlocked"
-            elif area_data.get("status") == 2:
-                status_text = "Completed"
-            self.area_status_combo.setCurrentText(status_text)
-            
-            # Imposta le coordinate
-            coords = area_data.get("coordinates", (0, 0))
-            self.area_x_spin.setValue(coords[0])
-            self.area_y_spin.setValue(coords[1])
-            
-            # Evidenzia l'area sulla mappa
-            self.highlight_area(area_id)
-        
-    def highlight_area(self, area_id):
-        """Evidenzia un'area sulla mappa"""
-        if not hasattr(self, 'map_pixmap') or not self.map_pixmap:
-            return
-            
-        # Crea una copia modificabile della mappa
-        highlighted = QPixmap(self.map_pixmap)
-        painter = QPainter(highlighted)
-        
-        # Imposta parametri disegno
-        pen = QPen(QColor(255, 165, 0))  # Arancione
-        pen.setWidth(3)
-        painter.setPen(pen)
-        
-        # Disegna un cerchio attorno all'area selezionata
-        if area_id in self.map_areas:
-            coords = self.map_areas[area_id].get("coordinates", (0, 0))
-            
-            # Calcola la posizione relativa sulla mappa
-            map_width = self.map_pixmap.width()
-            map_height = self.map_pixmap.height()
-            
-            # Converti le coordinate del gioco in coordinate della mappa
-            x = int((coords[0] + 1000) * map_width / 2000)
-            y = int((coords[1] + 1000) * map_height / 2000)
-            
-            # Disegna un cerchio
-            painter.drawEllipse(x - 15, y - 15, 30, 30)
-        
-        painter.end()
-        
-        # Aggiorna la visualizzazione
-        self.map_view.setPixmap(highlighted.scaled(
-            self.map_view.width(), 
-            self.map_view.height(), 
-            Qt.AspectRatioMode.KeepAspectRatio,
-            Qt.TransformationMode.SmoothTransformation
-        ))
-        
-    def unlock_area(self):
-        """Unlock a map area"""
-        # Check if we have a valid ID
-        area_id = self.area_id_edit.text()
-        if not area_id or area_id not in self.map_areas:
-            self.status_bar.showMessage("Error: Select a valid area from the table first")
-            return
-            
-        # Set status to "Unlocked"
-        self.area_status_combo.setCurrentText("Unlocked")
-        
-        # Update table
-        for row in range(self.areas_table.rowCount()):
-            if self.areas_table.item(row, 0).text() == area_id:
-                self.areas_table.setItem(row, 2, QTableWidgetItem("Unlocked"))
-                break
-                
-        # Update areas dictionary
-        self.map_areas[area_id]["status"] = 1
-        
-        self.status_bar.showMessage(f"Area {area_id} unlocked successfully")
-        
-    def reset_map(self):
-        """Reset all areas on the map"""
-        reply = QMessageBox.question(
+    def browse_backup_folder(self):
+        """Apre il dialogo per selezionare la cartella di backup"""
+        folder = QFileDialog.getExistingDirectory(
             self,
-            "Confirm Reset",
-            "Are you sure you want to reset all map areas? This will set all areas as locked.",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.No
+            tr("settings_tab.select_backup_folder", "Select Backup Folder"),
+            self.backup_folder_edit.text()
         )
         
-        if reply == QMessageBox.StandardButton.Yes:
-            # Reset all areas
-            for area_id in self.map_areas:
-                self.map_areas[area_id]["status"] = 0
-                
-            # Update table
-            for row in range(self.areas_table.rowCount()):
-                area_id = self.areas_table.item(row, 0).text()
-                self.areas_table.setItem(row, 2, QTableWidgetItem("Locked"))
-                
-            # Update current selection
-            if self.area_id_edit.text():
-                self.area_status_combo.setCurrentText("Locked")
-                
-            self.status_bar.showMessage("All map areas have been reset")
-        
-    def save_changes(self):
-        """Save map changes"""
-        if not self.save_data:
-            self.status_bar.showMessage("Error: No data loaded. Load a save file first")
-            return
+        if folder:
+            self.backup_folder_edit.setText(folder)
             
-        # Check if we have a valid ID
-        area_id = self.area_id_edit.text()
-        if not area_id or area_id not in self.map_areas:
-            self.status_bar.showMessage("Error: Select a valid area from the table first")
-            return
-            
+    def save_settings(self):
+        """Salva le impostazioni"""
         try:
-            # Update area data
-            self.map_areas[area_id]["name"] = self.area_name_edit.text()
+            # Trova il percorso del file settings.json
+            root_dir = os.environ.get("REPO_SAVE_EDITOR_ROOT", os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+            settings_path = os.path.join(root_dir, "settings.json")
             
-            # Determine numeric status based on text
-            status_text = self.area_status_combo.currentText()
-            status_value = 0  # Locked by default
-            if status_text == "Unlocked":
-                status_value = 1
-            elif status_text == "Completed":
-                status_value = 2
+            # Crea le impostazioni
+            settings = {
+                "theme": "dark" if self.theme_combo.currentIndex() == 0 else "light",
+                "language": self.language_combo.itemData(self.language_combo.currentIndex()),
+                "auto_backup": self.auto_backup_check.isChecked(),
+                "backup_path": self.backup_folder_edit.text(),
+                "backup_count": self.backup_count_spin.value(),
+                "backup_interval": self.backup_interval_spin.value()
+            }
             
-            self.map_areas[area_id]["status"] = status_value
-            
-            # Update coordinates
-            self.map_areas[area_id]["coordinates"] = (
-                self.area_x_spin.value(),
-                self.area_y_spin.value()
+            # Salva le impostazioni
+            with open(settings_path, "w") as f:
+                json.dump(settings, f, indent=4)
+                
+            # Aggiorna le impostazioni del backup manager
+            from ..core.backup import backup_manager
+            backup_manager.update_settings(settings)
+                
+            QMessageBox.information(
+                self,
+                tr("general.success", "Successo"),
+                tr("settings_tab.settings_saved", "Settings have been saved successfully.")
             )
             
-            # Update table
-            for row in range(self.areas_table.rowCount()):
-                if self.areas_table.item(row, 0).text() == area_id:
-                    self.areas_table.setItem(row, 1, QTableWidgetItem(self.area_name_edit.text()))
-                    self.areas_table.setItem(row, 2, QTableWidgetItem(status_text))
-                    break
+        except Exception as e:
+            print(f"Errore durante il salvataggio delle impostazioni: {str(e)}")
+            QMessageBox.critical(
+                self,
+                tr("general.error", "Errore"),
+                tr("settings_tab.save_error", f"An error occurred while saving settings: {str(e)}")
+            )
             
-            # Update save data
-            if "dictionaryOfDictionaries" in self.save_data and "value" in self.save_data["dictionaryOfDictionaries"]:
-                dict_of_dicts = self.save_data["dictionaryOfDictionaries"]["value"]
-                
-                # Update area status and names
-                if "mapAreas" in dict_of_dicts:
-                    dict_of_dicts["mapAreas"][area_id] = status_value
-                    
-                if "mapAreaNames" in dict_of_dicts:
-                    dict_of_dicts["mapAreaNames"][area_id] = self.area_name_edit.text()
-                    
-                if "mapAreaCoordinates" in dict_of_dicts:
-                    coords = self.map_areas[area_id]["coordinates"]
-                    dict_of_dicts["mapAreaCoordinates"][area_id] = {
-                        "x": coords[0],
-                        "y": coords[1]
-                    }
+    def reset_defaults(self):
+        """Ripristina le impostazioni predefinite"""
+        try:
+            # Impostazioni predefinite
+            self.theme_combo.setCurrentIndex(0)  # Dark
+            self.auto_backup_check.setChecked(True)
             
-            # Update map view
-            self.highlight_area(area_id)
+            # Trova il percorso della cartella backups
+            root_dir = os.environ.get("REPO_SAVE_EDITOR_ROOT", os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+            self.backup_folder_edit.setText(os.path.join(root_dir, "backups"))
             
-            self.status_bar.showMessage(f"Changes to area {area_id} saved successfully")
+            self.backup_count_spin.setValue(5)
+            self.backup_interval_spin.setValue(5)
+            
+            QMessageBox.information(
+                self,
+                tr("general.success", "Successo"),
+                tr("settings_tab.settings_reset", "Settings have been reset to default values.")
+            )
             
         except Exception as e:
-            self.status_bar.showMessage(f"Error saving changes: {str(e)}")
+            print(f"Errore durante il ripristino delle impostazioni predefinite: {str(e)}")
+            QMessageBox.critical(
+                self,
+                tr("general.error", "Errore"),
+                tr("settings_tab.reset_error", f"An error occurred while resetting settings: {str(e)}")
+            )
+
+class JsonSyntaxHighlighter(QSyntaxHighlighter):
+    """Syntax highlighter for JSON"""
     
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        
+        self.highlighting_rules = []
+        
+        # String format
+        string_format = QTextCharFormat()
+        string_format.setForeground(QColor("#ce9178"))
+        self.highlighting_rules.append((re.compile(r'"[^"\\]*(\\.[^"\\]*)*"'), string_format))
+        
+        # Number format
+        number_format = QTextCharFormat()
+        number_format.setForeground(QColor("#b5cea8"))
+        self.highlighting_rules.append((re.compile(r'\b\d+\b'), number_format))
+        
+        # Boolean format
+        boolean_format = QTextCharFormat()
+        boolean_format.setForeground(QColor("#569cd6"))
+        self.highlighting_rules.append((re.compile(r'\b(true|false|null)\b'), boolean_format))
+        
+        # Bracket format
+        bracket_format = QTextCharFormat()
+        bracket_format.setForeground(QColor("#d4d4d4"))
+        self.highlighting_rules.append((re.compile(r'[\[\]{}]'), bracket_format))
+        
+        # Comma format
+        comma_format = QTextCharFormat()
+        comma_format.setForeground(QColor("#d4d4d4"))
+        self.highlighting_rules.append((re.compile(r','), comma_format))
+        
+        # Colon format
+        colon_format = QTextCharFormat()
+        colon_format.setForeground(QColor("#d4d4d4"))
+        self.highlighting_rules.append((re.compile(r':'), colon_format))
+        
+    def highlightBlock(self, text):
+        """Highlight the block of text"""
+        for pattern, format in self.highlighting_rules:
+            for match in pattern.finditer(text):
+                self.setFormat(match.start(), match.end() - match.start(), format)
+
+class AdvancedTab(QWidget):
+    """Tab for advanced editing of save data"""
+    
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.save_data = None
+        self.status_bar = None  # Will be set by the main window
+        self.init_ui()
+        
+        # Registra per gli aggiornamenti della lingua
+        language_manager.add_observer(self.update_translations)
+        
+    def init_ui(self):
+        layout = QVBoxLayout()
+        
+        # Splitter per dividere l'editor JSON e la struttura
+        splitter = QSplitter(Qt.Orientation.Horizontal)
+        
+        # Editor JSON
+        json_layout = QVBoxLayout()
+        self.json_label = QLabel(tr("advanced_tab.json_editor", "JSON Editor"))
+        json_layout.addWidget(self.json_label)
+        
+        self.json_editor = QTextEdit()
+        self.json_editor.setFont(QFont("Courier New", 10))
+        self.json_editor.setLineWrapMode(QTextEdit.LineWrapMode.NoWrap)
+        
+        # Syntax highlighter
+        self.highlighter = JsonSyntaxHighlighter(self.json_editor.document())
+        
+        json_layout.addWidget(self.json_editor)
+        
+        # Buttons for JSON editor
+        json_buttons_layout = QHBoxLayout()
+        
+        self.format_button = QPushButton(tr("advanced_tab.format_json", "Format JSON"))
+        self.format_button.clicked.connect(self.format_json)
+        json_buttons_layout.addWidget(self.format_button)
+        
+        self.validate_button = QPushButton(tr("advanced_tab.validate_json", "Validate JSON"))
+        self.validate_button.clicked.connect(self.validate_json)
+        json_buttons_layout.addWidget(self.validate_button)
+        
+        self.apply_button = QPushButton(tr("advanced_tab.apply_changes", "Apply Changes"))
+        self.apply_button.clicked.connect(self.apply_changes)
+        json_buttons_layout.addWidget(self.apply_button)
+        
+        json_layout.addLayout(json_buttons_layout)
+        
+        # Warning label
+        self.warning_label = QLabel(tr("advanced_tab.warning", "Warning: direct editing of JSON can cause compatibility issues with the game. Use with caution."))
+        self.warning_label.setStyleSheet("color: #f0a30a; font-style: italic;")
+        self.warning_label.setWordWrap(True)
+        json_layout.addWidget(self.warning_label)
+        
+        json_widget = QWidget()
+        json_widget.setLayout(json_layout)
+        splitter.addWidget(json_widget)
+        
+        # JSON structure viewer
+        structure_layout = QVBoxLayout()
+        self.structure_label = QLabel(tr("advanced_tab.json_structure", "JSON Structure"))
+        structure_layout.addWidget(self.structure_label)
+        
+        self.structure_viewer = QTextEdit()
+        self.structure_viewer.setReadOnly(True)
+        self.structure_viewer.setFont(QFont("Courier New", 10))
+        structure_layout.addWidget(self.structure_viewer)
+        
+        structure_widget = QWidget()
+        structure_widget.setLayout(structure_layout)
+        splitter.addWidget(structure_widget)
+        
+        # Set initial sizes
+        splitter.setSizes([500, 300])
+        
+        layout.addWidget(splitter)
+        
+        self.setLayout(layout)
+        
+    def update_translations(self):
+        """Aggiorna le traduzioni dell'interfaccia quando cambia la lingua"""
+        self.json_label.setText(tr("advanced_tab.json_editor", "JSON Editor"))
+        self.structure_label.setText(tr("advanced_tab.json_structure", "JSON Structure"))
+        self.format_button.setText(tr("advanced_tab.format_json", "Format JSON"))
+        self.validate_button.setText(tr("advanced_tab.validate_json", "Validate JSON"))
+        self.apply_button.setText(tr("advanced_tab.apply_changes", "Apply Changes"))
+        self.warning_label.setText(tr("advanced_tab.warning", "Warning: direct editing of JSON can cause compatibility issues with the game. Use with caution."))
+        
     def update_data(self, data: Dict[str, Any]):
         """
-        Update map data
+        Update the tab with save data
         
         Args:
             data: Save data
         """
         try:
             self.save_data = data
-            self.map_areas = {}
             
-            # Clear table
-            self.areas_table.setRowCount(0)
+            # Format and display the JSON
+            json_str = json.dumps(data, indent=4)
+            self.json_editor.setText(json_str)
             
-            # Check if there's map data
-            if "dictionaryOfDictionaries" in data and "value" in data["dictionaryOfDictionaries"]:
-                dict_of_dicts = data["dictionaryOfDictionaries"]["value"]
-                
-                # Look for map-related keys
-                map_keys = ["mapAreas", "areas", "worldMap", "locations", "zones"]
-                map_key = next((key for key in map_keys if key in dict_of_dicts), None)
-                
-                if map_key:
-                    areas = dict_of_dicts[map_key]
-                    
-                    # Dictionaries for area names and coordinates
-                    area_names = {}
-                    area_coords = {}
-                    
-                    # Look for area names
-                    if "mapAreaNames" in dict_of_dicts:
-                        area_names = dict_of_dicts["mapAreaNames"]
-                    elif "areaNames" in dict_of_dicts:
-                        area_names = dict_of_dicts["areaNames"]
-                        
-                    # Look for area coordinates
-                    if "mapAreaCoordinates" in dict_of_dicts:
-                        area_coords = dict_of_dicts["mapAreaCoordinates"]
-                    elif "areaCoordinates" in dict_of_dicts:
-                        area_coords = dict_of_dicts["areaCoordinates"]
-                        
-                    # Process each area
-                    for area_id, area_status in areas.items():
-                        area_name = area_names.get(area_id, f"Area {area_id}")
-                        
-                        # Extract coordinates
-                        coords = (0, 0)
-                        if area_id in area_coords:
-                            coords_data = area_coords[area_id]
-                            if isinstance(coords_data, dict):
-                                coords = (
-                                    coords_data.get("x", 0),
-                                    coords_data.get("y", 0)
-                                )
-                                
-                        # Determine area status
-                        status_value = 0
-                        if isinstance(area_status, bool):
-                            status_value = 1 if area_status else 0
-                        elif isinstance(area_status, (int, float)):
-                            status_value = int(area_status)
-                            
-                        # Save area data
-                        self.map_areas[area_id] = {
-                            "name": area_name,
-                            "status": status_value,
-                            "coordinates": coords
-                        }
-                        
-                        # Determine status text
-                        status_text = "Locked"
-                        if status_value == 1:
-                            status_text = "Unlocked"
-                        elif status_value == 2:
-                            status_text = "Completed"
-                            
-                        # Add to table
-                        self.add_area_to_table(area_id, area_name, status_text)
-                        
-                # Load base map
-                self.load_base_map()
-                
-                if self.map_areas:
-                    self.status_bar.showMessage(f"Loaded {len(self.map_areas)} map areas")
-                else:
-                    self.status_bar.showMessage("No map areas found in save data")
-                
-        except Exception as e:
-            self.status_bar.showMessage(f"Error updating map data: {str(e)}")
-    
-    def load_base_map(self):
-        """Carica la mappa di base dal gioco o una immagine generica"""
-        try:
-            # Prova a caricare la mappa dal gioco
-            root_dir = os.environ.get("REPO_SAVE_EDITOR_ROOT", os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-            map_path = os.path.join(root_dir, "assets", "images", "world_map.png")
-            
-            if os.path.exists(map_path):
-                self.map_pixmap = QPixmap(map_path)
-            else:
-                # Genera una mappa generica
-                width = 500
-                height = 400
-                self.map_pixmap = QPixmap(width, height)
-                self.map_pixmap.fill(QColor(30, 30, 40))
-                
-                # Disegna una griglia
-                painter = QPainter(self.map_pixmap)
-                painter.setPen(QPen(QColor(50, 50, 60)))
-                
-                # Disegna linee orizzontali
-                for y in range(0, height, 50):
-                    painter.drawLine(0, y, width, y)
-                    
-                # Disegna linee verticali
-                for x in range(0, width, 50):
-                    painter.drawLine(x, 0, x, height)
-                    
-                painter.end()
-            
-            # Disegna punti per ogni area
-            painter = QPainter(self.map_pixmap)
-            
-            for area_id, area_data in self.map_areas.items():
-                coords = area_data.get("coordinates", (0, 0))
-                status = area_data.get("status", 0)
-                
-                # Calcola la posizione relativa sulla mappa
-                map_width = self.map_pixmap.width()
-                map_height = self.map_pixmap.height()
-                
-                # Converti le coordinate del gioco in coordinate della mappa
-                x = int((coords[0] + 1000) * map_width / 2000)
-                y = int((coords[1] + 1000) * map_height / 2000)
-                
-                # Scegli colore in base allo stato
-                if status == 0:  # Bloccata
-                    painter.setPen(QPen(QColor(255, 0, 0)))  # Rosso
-                    painter.setBrush(QColor(255, 0, 0))
-                elif status == 1:  # Sbloccata
-                    painter.setPen(QPen(QColor(0, 255, 0)))  # Verde
-                    painter.setBrush(QColor(0, 255, 0))
-                else:  # Completata
-                    painter.setPen(QPen(QColor(0, 0, 255)))  # Blu
-                    painter.setBrush(QColor(0, 0, 255))
-                    
-                # Disegna un punto
-                painter.drawEllipse(x - 5, y - 5, 10, 10)
-                
-            painter.end()
-            
-            # Mostra la mappa
-            self.map_view.setPixmap(self.map_pixmap.scaled(
-                self.map_view.width(), 
-                self.map_view.height(),
-                Qt.AspectRatioMode.KeepAspectRatio,
-                Qt.TransformationMode.SmoothTransformation
-            ))
+            # Update the structure viewer
+            self.update_structure_viewer(data)
             
         except Exception as e:
-            print(f"Errore durante il caricamento della mappa: {e}")
-            self.map_view.setText("Errore caricamento mappa")
-    
-    def add_area_to_table(self, area_id, name, status):
+            import traceback
+            traceback_str = traceback.format_exc()
+            print(f"Errore durante l'aggiornamento dei dati avanzati: {str(e)}\n{traceback_str}")
+            QMessageBox.warning(
+                self,
+                tr("general.error", "Errore"),
+                tr("advanced_tab.update_error", f"Failed to update advanced data: {str(e)}")
+            )
+            
+    def update_structure_viewer(self, data: Dict[str, Any], prefix=""):
         """
-        Aggiunge un'area alla tabella
+        Update the structure viewer with a simplified view of the JSON structure
         
         Args:
-            area_id: ID dell'area
-            name: Nome dell'area
-            status: Stato dell'area
+            data: Data to display
+            prefix: Prefix for nested structures
         """
-        row = self.areas_table.rowCount()
-        self.areas_table.insertRow(row)
-        
-        # Imposta i dati nelle celle
-        self.areas_table.setItem(row, 0, QTableWidgetItem(str(area_id)))
-        self.areas_table.setItem(row, 1, QTableWidgetItem(str(name)))
-        self.areas_table.setItem(row, 2, QTableWidgetItem(str(status)))
-        
-        # Pulsante azioni
-        action_cell = QTableWidgetItem("Modifica")
-        self.areas_table.setItem(row, 3, action_cell)
-
-class SettingsTab(QWidget):
-    """Tab per le impostazioni dell'editor"""
-    
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self.settings_file = os.path.join(
-            os.environ.get("REPO_SAVE_EDITOR_ROOT", 
-            os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))),
-            "settings.json"
-        )
-        self.settings = self.load_settings()
-        self.status_bar = None  # Will be set by the main window
-        self.init_ui()
-        
-    def init_ui(self):
-        layout = QVBoxLayout()
-        
-        # General settings
-        general_group = QGroupBox("General Settings")
-        general_layout = QFormLayout()
-        
-        # Theme
-        self.theme_combo = QComboBox()
-        self.theme_combo.addItems(["Dark", "Light"])
-        if "theme" in self.settings:
-            self.theme_combo.setCurrentText(self.settings["theme"])
-        general_layout.addRow("Theme:", self.theme_combo)
-        
-        # Language
-        self.language_combo = QComboBox()
-        self.language_combo.addItems(["English", "Italian"])
-        if "language" in self.settings:
-            self.language_combo.setCurrentText(self.settings["language"])
-        general_layout.addRow("Language:", self.language_combo)
-        
-        general_group.setLayout(general_layout)
-        layout.addWidget(general_group)
-        
-        # Backup settings
-        backup_group = QGroupBox("Backup Settings")
-        backup_layout = QFormLayout()
-        
-        # Backup folder
-        self.backup_path_edit = QLineEdit()
-        self.backup_path_edit.setText(self.settings.get("backup_path", ""))
-        
-        backup_path_layout = QHBoxLayout()
-        backup_path_layout.addWidget(self.backup_path_edit)
-        
-        browse_button = QPushButton("Browse...")
-        browse_button.clicked.connect(self.browse_backup_folder)
-        backup_path_layout.addWidget(browse_button)
-        
-        backup_layout.addRow("Backup Folder:", backup_path_layout)
-        
-        # Backup frequency
-        self.backup_freq_combo = QComboBox()
-        self.backup_freq_combo.addItems(["Never", "Hourly", "Daily", "Weekly"])
-        if "backup_frequency" in self.settings:
-            self.backup_freq_combo.setCurrentText(self.settings["backup_frequency"])
-        backup_layout.addRow("Backup Frequency:", self.backup_freq_combo)
-        
-        # Maximum backups
-        self.max_backups_spin = QSpinBox()
-        self.max_backups_spin.setRange(1, 100)
-        self.max_backups_spin.setValue(self.settings.get("max_backups", 5))
-        backup_layout.addRow("Max Backups:", self.max_backups_spin)
-        
-        backup_group.setLayout(backup_layout)
-        layout.addWidget(backup_group)
-        
-        # Advanced settings
-        advanced_group = QGroupBox("Advanced Settings")
-        advanced_layout = QFormLayout()
-        
-        # Developer mode
-        self.dev_mode_check = QCheckBox()
-        self.dev_mode_check.setChecked(self.settings.get("dev_mode", False))
-        advanced_layout.addRow("Developer Mode:", self.dev_mode_check)
-        
-        # Cache size
-        self.cache_size_spin = QSpinBox()
-        self.cache_size_spin.setRange(10, 1000)
-        self.cache_size_spin.setSuffix(" MB")
-        self.cache_size_spin.setValue(self.settings.get("cache_size", 100))
-        advanced_layout.addRow("Cache Size:", self.cache_size_spin)
-        
-        # Network timeout
-        self.network_timeout_spin = QSpinBox()
-        self.network_timeout_spin.setRange(1, 60)
-        self.network_timeout_spin.setSuffix(" sec")
-        self.network_timeout_spin.setValue(self.settings.get("network_timeout", 10))
-        advanced_layout.addRow("Network Timeout:", self.network_timeout_spin)
-        
-        advanced_group.setLayout(advanced_layout)
-        layout.addWidget(advanced_group)
-        
-        # Buttons
-        buttons_layout = QHBoxLayout()
-        
-        self.save_button = QPushButton("Save Settings")
-        self.save_button.clicked.connect(self.save_settings)
-        buttons_layout.addWidget(self.save_button)
-        
-        self.reset_button = QPushButton("Reset Settings")
-        self.reset_button.clicked.connect(self.reset_settings)
-        buttons_layout.addWidget(self.reset_button)
-        
-        layout.addLayout(buttons_layout)
-        self.setLayout(layout)
-    
-    def browse_backup_folder(self):
-        """Open dialog to select the backup folder"""
-        folder = QFileDialog.getExistingDirectory(
-            self,
-            "Select Backup Folder",
-            self.backup_path_edit.text() or os.path.expanduser("~")
-        )
-        
-        if folder:
-            self.backup_path_edit.setText(folder)
-    
-    def load_settings(self):
-        """Carica le impostazioni da file"""
-        default_settings = {
-            "theme": "Dark",
-            "language": "English",
-            "backup_path": "",
-            "backup_frequency": "Never",
-            "max_backups": 5,
-            "dev_mode": False,
-            "cache_size": 100,
-            "network_timeout": 10
-        }
-        
         try:
-            if os.path.exists(self.settings_file):
-                with open(self.settings_file, 'r', encoding='utf-8') as f:
-                    settings = json.load(f)
-                return {**default_settings, **settings}
-            else:
-                return default_settings
-        except Exception as e:
-            print(f"Errore durante il caricamento delle impostazioni: {e}")
-            return default_settings
-        
-    def save_settings(self):
-        """Save current settings"""
-        settings = {
-            "theme": self.theme_combo.currentText(),
-            "language": self.language_combo.currentText(),
-            "backup_path": self.backup_path_edit.text(),
-            "backup_frequency": self.backup_freq_combo.currentText(),
-            "max_backups": self.max_backups_spin.value(),
-            "dev_mode": self.dev_mode_check.isChecked(),
-            "cache_size": self.cache_size_spin.value(),
-            "network_timeout": self.network_timeout_spin.value()
-        }
-        
-        try:
-            # Make sure settings directory exists
-            os.makedirs(os.path.dirname(self.settings_file), exist_ok=True)
+            structure_text = ""
             
-            # Save settings
-            with open(self.settings_file, 'w', encoding='utf-8') as f:
-                json.dump(settings, f, indent=4, ensure_ascii=False)
+            def add_structure(obj, prefix="", max_depth=3, current_depth=0):
+                nonlocal structure_text
                 
-            self.settings = settings
+                if current_depth > max_depth:
+                    structure_text += f"{prefix}...\n"
+                    return
+                    
+                if isinstance(obj, dict):
+                    for key, value in obj.items():
+                        if isinstance(value, dict):
+                            structure_text += f"{prefix}{key}: {{\n"
+                            add_structure(value, prefix + "  ", max_depth, current_depth + 1)
+                            structure_text += f"{prefix}}}\n"
+                        elif isinstance(value, list):
+                            structure_text += f"{prefix}{key}: [\n"
+                            if len(value) > 0:
+                                if isinstance(value[0], (dict, list)):
+                                    add_structure(value[0], prefix + "  ", max_depth, current_depth + 1)
+                                else:
+                                    structure_text += f"{prefix}  {type(value[0]).__name__}[{len(value)}]\n"
+                            structure_text += f"{prefix}]\n"
+                        else:
+                            value_type = type(value).__name__
+                            value_preview = str(value)
+                            if len(value_preview) > 50:
+                                value_preview = value_preview[:47] + "..."
+                            structure_text += f"{prefix}{key}: {value_type} = {value_preview}\n"
+                elif isinstance(obj, list):
+                    if len(obj) > 0:
+                        structure_text += f"{prefix}[\n"
+                        if isinstance(obj[0], (dict, list)):
+                            add_structure(obj[0], prefix + "  ", max_depth, current_depth + 1)
+                        else:
+                            structure_text += f"{prefix}  {type(obj[0]).__name__}[{len(obj)}]\n"
+                        structure_text += f"{prefix}]\n"
+                    else:
+                        structure_text += f"{prefix}[]\n"
+                else:
+                    value_type = type(obj).__name__
+                    value_preview = str(obj)
+                    if len(value_preview) > 50:
+                        value_preview = value_preview[:47] + "..."
+                    structure_text += f"{prefix}{value_type} = {value_preview}\n"
+                    
+            add_structure(data, prefix)
+            self.structure_viewer.setText(structure_text)
             
-            self.status_bar.showMessage("Settings saved successfully")
+        except Exception as e:
+            print(f"Errore durante l'aggiornamento della struttura: {str(e)}")
+            self.structure_viewer.setText(f"Error: {str(e)}")
             
-            # Ask user if they want to restart the application
-            if self.settings.get("theme") != settings["theme"] or self.settings.get("language") != settings["language"]:
-                reply = QMessageBox.question(
+    def format_json(self):
+        """Format the JSON in the editor"""
+        try:
+            # Get the current text
+            json_text = self.json_editor.toPlainText()
+            
+            # Parse and format
+            data = json.loads(json_text)
+            formatted_json = json.dumps(data, indent=4)
+            
+            # Update the editor
+            self.json_editor.setText(formatted_json)
+            
+            # Update the status bar
+            if self.status_bar:
+                self.status_bar.showMessage(tr("advanced_tab.json_formatted", "JSON formatted successfully."))
+                
+        except Exception as e:
+            QMessageBox.warning(
+                self,
+                tr("general.error", "Errore"),
+                tr("advanced_tab.json_invalid", f"JSON is not valid: {str(e)}")
+            )
+            
+    def validate_json(self):
+        """Validate the JSON in the editor"""
+        try:
+            # Get the current text
+            json_text = self.json_editor.toPlainText()
+            
+            # Parse to validate
+            json.loads(json_text)
+            
+            # Update the status bar
+            if self.status_bar:
+                self.status_bar.showMessage(tr("advanced_tab.json_valid", "JSON is syntactically valid."))
+                
+            QMessageBox.information(
+                self,
+                tr("general.success", "Successo"),
+                tr("advanced_tab.json_valid", "JSON is syntactically valid.")
+            )
+            
+        except Exception as e:
+            QMessageBox.warning(
+                self,
+                tr("general.error", "Errore"),
+                tr("advanced_tab.json_invalid", f"JSON is not valid: {str(e)}")
+            )
+            
+    def apply_changes(self):
+        """Apply the changes to the save data"""
+        try:
+            # Get the current text
+            json_text = self.json_editor.toPlainText()
+            
+            # Parse to validate
+            new_data = json.loads(json_text)
+            
+            # Confirm changes
+            reply = QMessageBox.question(
+                self,
+                tr("general.warning", "Attenzione"),
+                tr("advanced_tab.confirm_changes", "Are you sure you want to apply the changes to the JSON? This could cause compatibility issues with the game."),
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No
+            )
+            
+            if reply == QMessageBox.StandardButton.Yes:
+                # Update the save data
+                self.save_data = new_data
+                
+                # Update the structure viewer
+                self.update_structure_viewer(new_data)
+                
+                # Update the status bar
+                if self.status_bar:
+                    self.status_bar.showMessage(tr("advanced_tab.changes_applied", "JSON changes have been applied successfully."))
+                    
+                QMessageBox.information(
                     self,
-                    "Restart Required",
-                    "Some changes require restarting the application to take effect. Do you want to restart now?",
-                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-                    QMessageBox.StandardButton.No
+                    tr("general.success", "Successo"),
+                    tr("advanced_tab.changes_applied", "JSON changes have been applied successfully.")
                 )
                 
-                if reply == QMessageBox.StandardButton.Yes:
-                    # Restart the application
-                    import sys
-                    import subprocess
-                    
-                    # Restart process with the same arguments
-                    python = sys.executable
-                    os.execl(python, python, *sys.argv)
-            
         except Exception as e:
-            self.status_bar.showMessage(f"Error saving settings: {str(e)}")
-        
-    def reset_settings(self):
-        """Reset settings to default values"""
-        # Ask for confirmation
-        reply = QMessageBox.question(
-            self,
-            "Confirm Reset",
-            "Are you sure you want to reset all settings to default values?",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.No
-        )
-        
-        if reply == QMessageBox.StandardButton.Yes:
-            # Default values
-            default_settings = {
-                "theme": "Dark",
-                "language": "English",
-                "backup_path": "",
-                "backup_frequency": "Never",
-                "max_backups": 5,
-                "dev_mode": False,
-                "cache_size": 100,
-                "network_timeout": 10
-            }
-            
-            # Aggiorna i controlli UI
-            self.theme_combo.setCurrentText(default_settings["theme"])
-            self.language_combo.setCurrentText(default_settings["language"])
-            self.backup_path_edit.setText(default_settings["backup_path"])
-            self.backup_freq_combo.setCurrentText(default_settings["backup_frequency"])
-            self.max_backups_spin.setValue(default_settings["max_backups"])
-            self.dev_mode_check.setChecked(default_settings["dev_mode"])
-            self.cache_size_spin.setValue(default_settings["cache_size"])
-            self.network_timeout_spin.setValue(default_settings["network_timeout"])
-            
-            # Save default settings
-            self.settings = default_settings
-            
-            try:
-                # Save to file
-                with open(self.settings_file, 'w', encoding='utf-8') as f:
-                    json.dump(default_settings, f, indent=4, ensure_ascii=False)
-                
-                self.status_bar.showMessage("Settings reset to default values")
-                
-            except Exception as e:
-                self.status_bar.showMessage(f"Error resetting settings: {str(e)}")
-    
-    def apply_theme(self, theme):
-        """Applica il tema selezionato all'applicazione"""
-        if theme == "Dark":
-            # Applica il tema scuro
-            self.setStyleSheet("""
-                QWidget { background-color: #2D2D30; color: #FFFFFF; }
-                QGroupBox { border: 1px solid #3F3F46; border-radius: 4px; margin-top: 0.5em; }
-                QGroupBox::title { subcontrol-origin: margin; left: 10px; padding: 0 3px; }
-                QPushButton { background-color: #0078D7; color: white; border-radius: 4px; padding: 5px; }
-                QPushButton:hover { background-color: #1C97EA; }
-                QLineEdit, QSpinBox, QComboBox { background-color: #333337; border: 1px solid #3F3F46; border-radius: 2px; padding: 3px; color: white; }
-                QTabWidget::pane { border: 1px solid #3F3F46; }
-                QTabBar::tab { background-color: #252526; color: #FFFFFF; padding: 8px 12px; }
-                QTabBar::tab:selected { background-color: #007ACC; }
-                QTabBar::tab:hover:!selected { background-color: #3E3E40; }
-            """)
-        elif theme == "Light":
-            # Applica il tema chiaro
-            self.setStyleSheet("""
-                QWidget { background-color: #F0F0F0; color: #000000; }
-                QGroupBox { border: 1px solid #CCCCCC; border-radius: 4px; margin-top: 0.5em; }
-                QGroupBox::title { subcontrol-origin: margin; left: 10px; padding: 0 3px; }
-                QPushButton { background-color: #0078D7; color: white; border-radius: 4px; padding: 5px; }
-                QPushButton:hover { background-color: #1C97EA; }
-                QLineEdit, QSpinBox, QComboBox { background-color: #FFFFFF; border: 1px solid #CCCCCC; border-radius: 2px; padding: 3px; color: black; }
-                QTabWidget::pane { border: 1px solid #CCCCCC; }
-                QTabBar::tab { background-color: #E1E1E1; color: #000000; padding: 8px 12px; }
-                QTabBar::tab:selected { background-color: #007ACC; color: white; }
-                QTabBar::tab:hover:!selected { background-color: #D1D1D1; }
-            """)
-        elif theme == "System":
-            # Usa il tema di sistema (rimuove lo stylesheet personalizzato)
-            self.setStyleSheet("")
-        
-        # Emetti un segnale per informare altre parti dell'applicazione del cambio di tema
-        if hasattr(self, 'theme_changed') and callable(getattr(self, 'theme_changed', None)):
-            self.theme_changed.emit(theme)
+            QMessageBox.warning(
+                self,
+                tr("general.error", "Errore"),
+                tr("advanced_tab.json_invalid", f"JSON is not valid: {str(e)}")
+            )

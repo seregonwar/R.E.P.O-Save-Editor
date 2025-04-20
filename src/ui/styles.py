@@ -4,197 +4,7 @@ Stili per l'interfaccia grafica di R.E.P.O Save Editor
 
 from PyQt6.QtWidgets import QApplication
 from PyQt6.QtCore import Qt
-from qt_material import apply_stylesheet
 from PyQt6.QtGui import QPalette, QColor
-
-# Colori principali
-PRIMARY_COLOR = "#3498db"
-SECONDARY_COLOR = "#2ecc71"
-BACKGROUND_COLOR = "#1a1a1a"
-CARD_BACKGROUND = "#2c3e50"
-TEXT_COLOR = "#ecf0f1"
-BORDER_COLOR = "#34495e"
-HOVER_COLOR = "#2980b9"
-DISABLED_COLOR = "#7f8c8d"
-
-# Stili comuni
-COMMON_STYLES = {
-    "font_size": "14px",
-    "border_radius": "5px",
-    "padding": "5px",
-    "min_height": "40px"
-}
-
-# Stili per i widget
-WIDGET_STYLES = {
-    "QMainWindow": f"""
-        background-color: {BACKGROUND_COLOR};
-    """,
-    
-    "QMenuBar": f"""
-        QMenuBar {{
-            background-color: {CARD_BACKGROUND};
-            color: {TEXT_COLOR};
-            border-bottom: 1px solid {PRIMARY_COLOR};
-        }}
-        QMenuBar::item {{
-            padding: 5px 10px;
-            background-color: transparent;
-        }}
-        QMenuBar::item:selected {{
-            background-color: {PRIMARY_COLOR};
-        }}
-        QMenu {{
-            background-color: {CARD_BACKGROUND};
-            color: {TEXT_COLOR};
-            border: 1px solid {PRIMARY_COLOR};
-        }}
-        QMenu::item {{
-            padding: 5px 20px;
-        }}
-        QMenu::item:selected {{
-            background-color: {PRIMARY_COLOR};
-        }}
-    """,
-    
-    "QStatusBar": f"""
-        QStatusBar {{
-            background-color: {CARD_BACKGROUND};
-            color: {TEXT_COLOR};
-            border-top: 1px solid {PRIMARY_COLOR};
-        }}
-    """,
-    
-    "QTabWidget": f"""
-        QTabWidget::pane {{
-            border: 1px solid {BORDER_COLOR};
-            border-radius: 5px;
-            background-color: {CARD_BACKGROUND};
-        }}
-        QTabBar::tab {{
-            background-color: {CARD_BACKGROUND};
-            color: {TEXT_COLOR};
-            padding: 8px 16px;
-            border: 1px solid {BORDER_COLOR};
-            border-bottom: none;
-            border-top-left-radius: 5px;
-            border-top-right-radius: 5px;
-        }}
-        QTabBar::tab:selected {{
-            background-color: {PRIMARY_COLOR};
-            color: white;
-        }}
-        QTabBar::tab:hover {{
-            background-color: {HOVER_COLOR};
-        }}
-    """,
-    
-    "QPushButton": f"""
-        QPushButton {{
-            background-color: {PRIMARY_COLOR};
-            color: white;
-            border: none;
-            padding: 8px 16px;
-            border-radius: 5px;
-            font-weight: bold;
-        }}
-        QPushButton:hover {{
-            background-color: {HOVER_COLOR};
-        }}
-        QPushButton:disabled {{
-            background-color: {DISABLED_COLOR};
-        }}
-    """,
-    
-    "QLineEdit": f"""
-        QLineEdit {{
-            background-color: {CARD_BACKGROUND};
-            color: {TEXT_COLOR};
-            border: 1px solid {BORDER_COLOR};
-            border-radius: 5px;
-            padding: 8px;
-        }}
-        QLineEdit:focus {{
-            border: 1px solid {PRIMARY_COLOR};
-        }}
-    """,
-    
-    "QComboBox": f"""
-        QComboBox {{
-            background-color: {CARD_BACKGROUND};
-            color: {TEXT_COLOR};
-            border: 1px solid {BORDER_COLOR};
-            border-radius: 5px;
-            padding: 8px;
-        }}
-        QComboBox::drop-down {{
-            border: none;
-        }}
-        QComboBox::down-arrow {{
-            image: url(assets/icons/down_arrow.png);
-            width: 12px;
-            height: 12px;
-        }}
-        QComboBox QAbstractItemView {{
-            background-color: {CARD_BACKGROUND};
-            color: {TEXT_COLOR};
-            selection-background-color: {PRIMARY_COLOR};
-        }}
-    """,
-    
-    "QCheckBox": f"""
-        QCheckBox {{
-            color: {TEXT_COLOR};
-            spacing: 5px;
-        }}
-        QCheckBox::indicator {{
-            width: 18px;
-            height: 18px;
-            border: 1px solid {BORDER_COLOR};
-            border-radius: 3px;
-            background-color: {CARD_BACKGROUND};
-        }}
-        QCheckBox::indicator:checked {{
-            background-color: {PRIMARY_COLOR};
-            border: 1px solid {PRIMARY_COLOR};
-        }}
-    """,
-    
-    "QProgressBar": f"""
-        QProgressBar {{
-            background-color: {CARD_BACKGROUND};
-            border: 1px solid {BORDER_COLOR};
-            border-radius: 5px;
-            text-align: center;
-            color: {TEXT_COLOR};
-        }}
-        QProgressBar::chunk {{
-            background-color: {PRIMARY_COLOR};
-            border-radius: 5px;
-        }}
-    """,
-    
-    "QScrollArea": f"""
-        QScrollArea {{
-            background-color: {CARD_BACKGROUND};
-            border: 1px solid {BORDER_COLOR};
-            border-radius: 5px;
-        }}
-        QScrollBar:vertical {{
-            background-color: {CARD_BACKGROUND};
-            width: 12px;
-            margin: 0px;
-        }}
-        QScrollBar::handle:vertical {{
-            background-color: {PRIMARY_COLOR};
-            min-height: 20px;
-            border-radius: 6px;
-        }}
-        QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{
-            height: 0px;
-        }}
-    """
-}
 
 def apply_style(app: QApplication):
     """Applica lo stile all'applicazione"""
@@ -220,11 +30,11 @@ def apply_style(app: QApplication):
     palette.setColor(QPalette.ColorRole.HighlightedText, Qt.GlobalColor.black)
     
     # Colori disabilitati
-    palette.setColor(QPalette.ColorRole.Disabled, QPalette.ColorRole.WindowText, QColor(127, 127, 127))
-    palette.setColor(QPalette.ColorRole.Disabled, QPalette.ColorRole.Text, QColor(127, 127, 127))
-    palette.setColor(QPalette.ColorRole.Disabled, QPalette.ColorRole.ButtonText, QColor(127, 127, 127))
-    palette.setColor(QPalette.ColorRole.Disabled, QPalette.ColorRole.Highlight, QColor(80, 80, 80))
-    palette.setColor(QPalette.ColorRole.Disabled, QPalette.ColorRole.HighlightedText, QColor(127, 127, 127))
+    palette.setColor(QPalette.ColorGroup.Disabled, QPalette.ColorRole.WindowText, QColor(127, 127, 127))
+    palette.setColor(QPalette.ColorGroup.Disabled, QPalette.ColorRole.Text, QColor(127, 127, 127))
+    palette.setColor(QPalette.ColorGroup.Disabled, QPalette.ColorRole.ButtonText, QColor(127, 127, 127))
+    palette.setColor(QPalette.ColorGroup.Disabled, QPalette.ColorRole.Highlight, QColor(80, 80, 80))
+    palette.setColor(QPalette.ColorGroup.Disabled, QPalette.ColorRole.HighlightedText, QColor(127, 127, 127))
     
     # Applica la palette
     app.setPalette(palette)
@@ -260,7 +70,7 @@ def apply_style(app: QApplication):
         }
         
         QPushButton {
-            background-color: #2a82da;
+            background-color: #f0a30a;
             color: white;
             border: none;
             padding: 8px 16px;
@@ -268,11 +78,11 @@ def apply_style(app: QApplication):
         }
         
         QPushButton:hover {
-            background-color: #3a92ea;
+            background-color: #f5b73a;
         }
         
         QPushButton:pressed {
-            background-color: #1a72ca;
+            background-color: #d09000;
         }
         
         QPushButton:disabled {
@@ -363,4 +173,99 @@ def apply_style(app: QApplication):
         }
         
         QMessageBox QPushButton {
-    """) 
+            background-color: #f0a30a;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+        }
+        
+        QComboBox {
+            background-color: #2a2a2a;
+            color: white;
+            border: 1px solid #2a2a2a;
+            padding: 4px;
+            border-radius: 4px;
+        }
+        
+        QComboBox::drop-down {
+            border: none;
+        }
+        
+        QComboBox QAbstractItemView {
+            background-color: #2a2a2a;
+            color: white;
+            selection-background-color: #2a82da;
+        }
+        
+        QGroupBox {
+            border: 1px solid #2a2a2a;
+            border-radius: 4px;
+            margin-top: 1ex;
+            padding-top: 10px;
+        }
+        
+        QGroupBox::title {
+            subcontrol-origin: margin;
+            subcontrol-position: top center;
+            padding: 0 3px;
+            color: white;
+        }
+        
+        QCheckBox {
+            color: white;
+        }
+        
+        QCheckBox::indicator {
+            width: 13px;
+            height: 13px;
+        }
+        
+        QRadioButton {
+            color: white;
+        }
+        
+        QRadioButton::indicator {
+            width: 13px;
+            height: 13px;
+        }
+        
+        QTextEdit {
+            background-color: #2a2a2a;
+            color: white;
+            border: 1px solid #2a2a2a;
+            border-radius: 4px;
+        }
+        
+        QScrollBar:vertical {
+            background-color: #2a2a2a;
+            width: 12px;
+            margin: 0px;
+        }
+        
+        QScrollBar::handle:vertical {
+            background-color: #5a5a5a;
+            min-height: 20px;
+            border-radius: 6px;
+        }
+        
+        QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
+            height: 0px;
+        }
+        
+        QScrollBar:horizontal {
+            background-color: #2a2a2a;
+            height: 12px;
+            margin: 0px;
+        }
+        
+        QScrollBar::handle:horizontal {
+            background-color: #5a5a5a;
+            min-width: 20px;
+            border-radius: 6px;
+        }
+        
+        QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {
+            width: 0px;
+        }
+    """)

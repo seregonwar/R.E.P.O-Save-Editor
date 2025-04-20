@@ -19,7 +19,7 @@ except ImportError:
     
 # Configuration
 APP_NAME = "REPO Save Editor"
-APP_VERSION = "1.0.0"
+APP_VERSION = "1.1.0"
 MAIN_SCRIPT = "src/main.py"
 ICON_PATH = "assets/icons/reposaveeditor.png"
 
@@ -59,6 +59,14 @@ def build_app():
     
     # Create README.txt in dist folder
     with open(dist_dir / "README.txt", "w") as readme:
+        readme.write(f"{APP_NAME} v{APP_VERSION}\n\n")
+        readme.write("Created by SeregonWar\n\n")
+        readme.write("Support the developer:\n")
+        readme.write("- Ko-Fi: https://ko-fi.com/seregon\n")
+        readme.write("- PayPal: https://paypal.me/seregonwar\n")
+        readme.write("- Twitter: https://x.com/SeregonWar\n")
+
+    with open(dist_dir / "CHANGELOG.txt", "w") as readme:
         readme.write(f"{APP_NAME} v{APP_VERSION}\n\n")
         readme.write("Created by SeregonWar\n\n")
         readme.write("Support the developer:\n")
