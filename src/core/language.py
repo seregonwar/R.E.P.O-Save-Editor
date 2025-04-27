@@ -7,6 +7,7 @@ import json
 from pathlib import Path
 from typing import Dict, Any, Optional
 import locale
+import sys
 
 class LanguageManager:
     """Gestisce le traduzioni dell'applicazione"""
@@ -21,44 +22,81 @@ class LanguageManager:
     def load_languages(self):
         """Carica tutte le lingue disponibili dalla cartella languages"""
         try:
-            # Trova il percorso della cartella languages
-            root_dir = os.environ.get("REPO_SAVE_EDITOR_ROOT", os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-            languages_dir = os.path.join(root_dir, "languages")
+            # Trova il percorso della cartella languages usando diversi metodi
+            languages_dir = None
+            
+            # 1. Controlla la variabile d'ambiente
+            if "REPO_SAVE_EDITOR_ROOT" in os.environ:
+                root_dir = Path(os.environ["REPO_SAVE_EDITOR_ROOT"])
+                languages_dir = root_dir / "languages"
+                print(f"DEBUG - Cercando lingue da variabile d'ambiente: {languages_dir}")
+            
+            # 2. Se siamo in un ambiente PyInstaller
+            if not languages_dir or not languages_dir.exists():
+                if getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS'):
+                    # Siamo in un eseguibile PyInstaller
+                    languages_dir = Path(sys._MEIPASS) / "languages"
+                    print(f"DEBUG - Cercando lingue in PyInstaller: {languages_dir}")
+            
+            # 3. Percorso relativo alla directory del modulo corrente
+            if not languages_dir or not languages_dir.exists():
+                root_dir = Path(__file__).parent.parent
+                languages_dir = root_dir / "languages"
+                print(f"DEBUG - Cercando lingue in percorso relativo: {languages_dir}")
+            
+            # 4. Percorso assoluto basato sulla directory corrente
+            if not languages_dir or not languages_dir.exists():
+                languages_dir = Path(os.getcwd()) / "languages"
+                print(f"DEBUG - Cercando lingue in percorso assoluto: {languages_dir}")
+            
+            print(f"DEBUG - Percorso finale per le lingue: {languages_dir}")
             
             # Verifica se la cartella esiste
-            if not os.path.exists(languages_dir):
+            if not languages_dir.exists():
                 print(f"Cartella delle lingue non trovata: {languages_dir}")
                 # Crea la cartella se non esiste
-                os.makedirs(languages_dir, exist_ok=True)
+                languages_dir.mkdir(parents=True, exist_ok=True)
+                
+                # Crea la lingua inglese di default
+                self.create_default_language()
                 return
                 
+            try:
+                # Lista tutti i file nella cartella
+                print(f"DEBUG - File nella cartella: {list(languages_dir.glob('*.json'))}")
+            except Exception as e:
+                print(f"DEBUG - Errore nella listazione dei file: {e}")
+                
             # Carica tutti i file JSON nella cartella
-            for file_name in os.listdir(languages_dir):
-                if file_name.endswith(".json"):
-                    try:
-                        file_path = os.path.join(languages_dir, file_name)
-                        with open(file_path, "r", encoding="utf-8") as f:
-                            lang_data = json.load(f)
-                            
-                        # Estrai il codice della lingua dal nome del file
-                        lang_code = os.path.splitext(file_name)[0]
+            json_files = list(languages_dir.glob("*.json"))
+            print(f"DEBUG - Trovati {len(json_files)} file JSON")
+            
+            for file_path in json_files:
+                try:
+                    print(f"DEBUG - Caricamento file lingua: {file_path}")
+                    with open(file_path, "r", encoding="utf-8") as f:
+                        lang_data = json.load(f)
                         
-                        # Memorizza le informazioni sulla lingua
-                        self.languages[lang_code] = {
-                            "name": lang_data.get("language", lang_code),
-                            "code": lang_code,
-                            "author": lang_data.get("author", "Unknown"),
-                            "version": lang_data.get("version", "1.0.0"),
-                            "translations": lang_data.get("translations", {})
-                        }
-                        
-                        print(f"Lingua caricata: {lang_code} - {self.languages[lang_code]['name']}")
-                        
-                    except Exception as e:
-                        print(f"Errore durante il caricamento del file lingua {file_name}: {str(e)}")
-                        
+                    # Estrai il codice della lingua dal nome del file
+                    lang_code = file_path.stem
+                    
+                    # Memorizza le informazioni sulla lingua
+                    self.languages[lang_code] = {
+                        "name": lang_data.get("language", lang_code),
+                        "code": lang_code,
+                        "author": lang_data.get("author", "Unknown"),
+                        "version": lang_data.get("version", "1.0.0"),
+                        "translations": lang_data.get("translations", {})
+                    }
+                    
+                    print(f"Lingua caricata: {lang_code} - {self.languages[lang_code]['name']}")
+                    
+                except Exception as e:
+                    print(f"Errore durante il caricamento del file lingua {file_path.name}: {str(e)}")
+                    
             # Se non ci sono lingue, crea la lingua predefinita
             if not self.languages:
+                print("DEBUG - Nessuna lingua trovata, creo la lingua predefinita")
                 self.create_default_language()
                 
             # Prova a impostare la lingua del sistema
@@ -67,19 +105,25 @@ class LanguageManager:
                 if system_locale:
                     # Converte il formato locale (es. it_IT) in formato lingua (es. it-IT)
                     system_lang = system_locale.replace('_', '-')
+                    print(f"DEBUG - Lingua di sistema rilevata: {system_lang}")
                     
                     # Verifica se esiste una lingua corrispondente
                     if system_lang in self.languages:
                         self.current_language = system_lang
+                        print(f"DEBUG - Lingua di sistema trovata: {system_lang}")
                     else:
                         # Prova a trovare una corrispondenza parziale (solo la prima parte)
                         lang_prefix = system_lang.split('-')[0]
                         for lang_code in self.languages.keys():
                             if lang_code.startswith(lang_prefix):
                                 self.current_language = lang_code
+                                print(f"DEBUG - Trovata corrispondenza parziale: {lang_code}")
                                 break
-            except:
-                pass
+            except Exception as e:
+                print(f"DEBUG - Errore nel rilevamento della lingua di sistema: {e}")
+                
+            # Elenco tutte le lingue disponibili
+            print(f"DEBUG - Lingue disponibili: {', '.join(self.languages.keys())}")
                 
             # Carica la lingua predefinita
             self.set_language(self.current_language)
@@ -92,12 +136,31 @@ class LanguageManager:
     def create_default_language(self):
         """Crea il file della lingua predefinita (inglese)"""
         try:
-            # Trova il percorso della cartella languages
-            root_dir = os.environ.get("REPO_SAVE_EDITOR_ROOT", os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-            languages_dir = os.path.join(root_dir, "languages")
+            # Trova il percorso della cartella languages usando diversi metodi
+            languages_dir = None
+            
+            # 1. Controlla la variabile d'ambiente
+            if "REPO_SAVE_EDITOR_ROOT" in os.environ:
+                root_dir = Path(os.environ["REPO_SAVE_EDITOR_ROOT"])
+                languages_dir = root_dir / "languages"
+            
+            # 2. Se siamo in un ambiente PyInstaller
+            if not languages_dir or not languages_dir.exists():
+                if getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS'):
+                    # Siamo in un eseguibile PyInstaller
+                    languages_dir = Path(sys._MEIPASS) / "languages"
+            
+            # 3. Percorso relativo alla directory del modulo corrente
+            if not languages_dir or not languages_dir.exists():
+                root_dir = Path(__file__).parent.parent
+                languages_dir = root_dir / "languages"
+            
+            # 4. Percorso assoluto basato sulla directory corrente
+            if not languages_dir or not languages_dir.exists():
+                languages_dir = Path(os.getcwd()) / "languages"
             
             # Crea la cartella se non esiste
-            os.makedirs(languages_dir, exist_ok=True)
+            languages_dir.mkdir(parents=True, exist_ok=True)
             
             # Crea il file della lingua inglese
             default_lang = {
@@ -117,13 +180,25 @@ class LanguageManager:
                         "success": "Success",
                         "loading": "Loading...",
                         "processing": "Processing...",
-                        "ready": "Ready"
+                        "ready": "Ready",
+                        "exit": "Exit"
+                    },
+                    "main_window": {
+                        "player_tab": "Player",
+                        "inventory_tab": "Inventory",
+                        "advanced_tab": "Advanced",
+                        "settings_tab": "Settings",
+                        "file_menu": "File",
+                        "edit_menu": "Edit",
+                        "help_menu": "Help",
+                        "open_action": "Open",
+                        "save_action": "Save"
                     }
                 }
             }
             
             # Salva il file
-            file_path = os.path.join(languages_dir, "en-US.json")
+            file_path = languages_dir / "en-US.json"
             with open(file_path, "w", encoding="utf-8") as f:
                 json.dump(default_lang, f, indent=4)
                 
@@ -167,7 +242,12 @@ class LanguageManager:
         print(f"Lingua impostata: {lang_code} - {self.languages[lang_code]['name']}")
         
         # Notifica gli osservatori del cambio lingua
-        self.notify_observers()
+        try:
+            self.notify_observers()
+        except Exception as e:
+            print(f"Errore durante la notifica degli osservatori del cambio lingua: {e}")
+            import traceback
+            traceback.print_exc()
         
         return True
         
@@ -291,11 +371,26 @@ class LanguageManager:
             
     def notify_observers(self):
         """Notifica tutti gli osservatori del cambio lingua"""
-        for observer in self.observers:
+        print(f"Notifica cambio lingua a {len(self.observers)} osservatori...")
+        
+        for idx, observer in enumerate(self.observers):
             try:
-                observer()
+                # Verifica se l'osservatore ha un metodo update_language
+                if hasattr(observer, 'update_language'):
+                    print(f"[{idx+1}/{len(self.observers)}] Chiamata update_language() per {observer.__class__.__name__}")
+                    observer.update_language()
+                elif callable(observer):
+                    # Mantiene la compatibilità con funzioni osservatori
+                    print(f"[{idx+1}/{len(self.observers)}] Chiamata diretta per {observer.__name__}")
+                    observer()
+                else:
+                    print(f"Warning: L'osservatore [{idx+1}/{len(self.observers)}] {observer} non è chiamabile e non ha un metodo update_language")
             except Exception as e:
-                print(f"Errore durante la notifica dell'osservatore: {str(e)}")
+                print(f"Errore durante la notifica dell'osservatore [{idx+1}/{len(self.observers)}]: {str(e)}")
+                import traceback
+                traceback.print_exc()
+        
+        print("Notifica cambio lingua completata")
 
 # Istanza globale del gestore delle lingue
 language_manager = LanguageManager()

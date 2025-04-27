@@ -1,0 +1,17 @@
+{
+	"folders": [
+		{
+			"name": "R.E.P.O-Save-Editor",
+			"path": ".."
+		},
+		{
+			"name": "languages",
+			"path": "../../../R.E.P.O-Save-Editor-2.0.0-SourceCode/R.E.P.O-Save-Editor-2.0.0/languages"
+		},
+		{
+			"name": "assets",
+			"path": "../../../R.E.P.O-Save-Editor-2.0.0-SourceCode/R.E.P.O-Save-Editor-2.0.0/assets"
+		}
+	],
+	"settings": {}
+}

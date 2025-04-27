@@ -17,8 +17,9 @@ from io import BytesIO
 import re
 import xml.etree.ElementTree as ElementTree
 from pathlib import Path
+import logging
 
-from ..core.language import tr, language_manager
+from core.language_manager import tr, language_manager
 
 class BaseTab(QWidget):
     """Tab base con funzionalità comuni"""
@@ -44,13 +45,13 @@ class BaseTab(QWidget):
 class PlayerTab(QWidget):
     """Tab for player data management"""
     
-    def __init__(self, parent=None):
+    def __init__(self, save_data, parent=None):
         super().__init__(parent)
-        self.save_data = None
+        self.save_data = save_data
         self.player_data = {}
-        self.players = {}  # Dictionary of available players
-        self.current_player_id = None  # ID of currently selected player
-        self.status_bar = None  # Will be set by the main window
+        self.players = {}
+        self.current_player_id = None
+        self.status_bar = None
         self.init_ui()
         
         # Registra per gli aggiornamenti della lingua
@@ -152,11 +153,7 @@ class PlayerTab(QWidget):
         self.agility_label = QLabel(tr("player_tab.agility", "Agility:"))
         stats_layout.addRow(self.agility_label, self.player_agility)
         
-        self.player_intelligence = QSpinBox()
-        self.player_intelligence.setRange(1, 100)
-        self.intelligence_label = QLabel(tr("player_tab.intelligence", "Intelligence:"))
-        stats_layout.addRow(self.intelligence_label, self.player_intelligence)
-        
+
         self.player_endurance = QSpinBox()
         self.player_endurance.setRange(1, 100)
         self.endurance_label = QLabel(tr("player_tab.endurance", "Endurance:"))
@@ -196,15 +193,25 @@ class PlayerTab(QWidget):
         self.stats_group.setLayout(stats_layout)
         layout.addWidget(self.stats_group)
         
-        # Save button
-        self.save_button = QPushButton(tr("player_tab.save_changes", "Save Changes"))
-        self.save_button.clicked.connect(self.save_changes)
-        layout.addWidget(self.save_button)
-        
         self.setLayout(layout)
         
         # Carica l'avatar default quando il widget è mostrato
         self.show_default_avatar()
+        
+        # Connect signals
+        self.player_name.textChanged.connect(self.on_player_name_changed)
+        self.player_level.valueChanged.connect(self.on_player_level_changed)
+        self.player_health.valueChanged.connect(self.on_player_health_changed)
+        self.player_money.valueChanged.connect(self.on_player_money_changed)
+        self.player_strength.valueChanged.connect(self.on_player_strength_changed)
+        self.player_agility.valueChanged.connect(self.on_player_agility_changed)
+        self.player_endurance.valueChanged.connect(self.on_player_endurance_changed)
+        self.player_extra_jump.valueChanged.connect(self.on_player_extra_jump_changed)
+        self.player_launch.valueChanged.connect(self.on_player_launch_changed)
+        self.player_map_count.valueChanged.connect(self.on_player_map_count_changed)
+        self.player_speed.valueChanged.connect(self.on_player_speed_changed)
+        self.player_range.valueChanged.connect(self.on_player_range_changed)
+        self.player_throw.valueChanged.connect(self.on_player_throw_changed)
         
     def update_translations(self):
         """Aggiorna le traduzioni dell'interfaccia quando cambia la lingua"""
@@ -219,7 +226,6 @@ class PlayerTab(QWidget):
         self.stats_group.setTitle(tr("player_tab.player_stats", "Player Stats"))
         self.strength_label.setText(tr("player_tab.strength", "Strength:"))
         self.agility_label.setText(tr("player_tab.agility", "Agility:"))
-        self.intelligence_label.setText(tr("player_tab.intelligence", "Intelligence:"))
         self.endurance_label.setText(tr("player_tab.endurance", "Endurance:"))
         self.extra_jump_label.setText(tr("player_tab.extra_jump", "Extra Jump:"))
         self.launch_label.setText(tr("player_tab.launch", "Launch:"))
@@ -227,7 +233,6 @@ class PlayerTab(QWidget):
         self.speed_label.setText(tr("player_tab.speed", "Speed:"))
         self.range_label.setText(tr("player_tab.range", "Range:"))
         self.throw_label.setText(tr("player_tab.throw", "Throw:"))
-        self.save_button.setText(tr("player_tab.save_changes", "Save Changes"))
         
     def add_new_player(self):
         """Aggiunge un nuovo giocatore al salvataggio"""
@@ -329,23 +334,24 @@ class PlayerTab(QWidget):
                         player_stats[stat_key] = dict_data[stat_key][player_id]
                 
                 # Debug: mostra le statistiche trovate
-                print(f"Statistiche trovate per il giocatore {player_id}: {list(player_stats.keys())}")
+                print(f"Statistics found for player {player_id}: {list(player_stats.keys())}")
                 
                 # Aggiorna i controlli UI con le statistiche del giocatore
                 if "playerHealth" in player_stats:
                     health_value = self.extract_value(player_stats["playerHealth"], 100)
                     self.player_health.setValue(health_value)
                     
-                if "playerUpgradeHealth" in player_stats:
-                    self.player_strength.setValue(self.extract_value(player_stats.get("playerUpgradeHealth"), 10))
-                
+                # Correggo le assegnazioni per mappare correttamente i dati del server ai controlli UI
                 if "playerUpgradeStamina" in player_stats:
+                    # Stamina -> Agilità
                     self.player_agility.setValue(self.extract_value(player_stats.get("playerUpgradeStamina"), 10))
                 
                 if "playerUpgradeStrength" in player_stats:
-                    self.player_intelligence.setValue(self.extract_value(player_stats.get("playerUpgradeStrength"), 10))
+                    # Forza -> Forza
+                    self.player_strength.setValue(self.extract_value(player_stats.get("playerUpgradeStrength"), 10))
                 
                 if "playerUpgradeSpeed" in player_stats:
+                    # Velocità -> Resistenza
                     self.player_endurance.setValue(self.extract_value(player_stats.get("playerUpgradeSpeed"), 10))
                 
                 # Aggiorna le statistiche aggiuntive
@@ -359,6 +365,7 @@ class PlayerTab(QWidget):
                     self.player_map_count.setValue(self.extract_value(player_stats.get("playerUpgradeMapPlayerCount"), 0))
                 
                 if "playerUpgradeSpeed" in player_stats:
+                    # Questo è duplicato, imposta il valore di Speed
                     self.player_speed.setValue(self.extract_value(player_stats.get("playerUpgradeSpeed"), 10))
                 
                 if "playerUpgradeRange" in player_stats:
@@ -370,11 +377,11 @@ class PlayerTab(QWidget):
                 # Aggiorna il livello da runStats
                 if "runStats" in dict_data and "level" in dict_data["runStats"]:
                     self.player_level.setValue(self.extract_value(dict_data["runStats"]["level"], 1))
-                    print(f"Livello giocatore impostato a: {self.player_level.value()}")
+                    print(f"Player level set to: {self.player_level.value()}")
                 
                 if "runStats" in dict_data and "currency" in dict_data["runStats"]:
                     self.player_money.setValue(self.extract_value(dict_data["runStats"]["currency"], 0))
-                    print(f"Soldi giocatore impostati a: {self.player_money.value()}")
+                    print(f"Money player set to: {self.player_money.value()}")
                 
                 # Memorizza i dati del giocatore per uso futuro
                 self.player_data = player_stats
@@ -385,11 +392,11 @@ class PlayerTab(QWidget):
         except Exception as e:
             import traceback
             traceback_str = traceback.format_exc()
-            print(f"Errore durante l'aggiornamento dei dati del giocatore: {str(e)}\n{traceback_str}")
+            print(f"Error updating player data: {str(e)}\n{traceback_str}")
             QMessageBox.warning(
                 self,
-                tr("general.error", "Errore"),
-                tr("player_tab.update_error", f"Impossibile aggiornare i dati del giocatore: {str(e)}")
+                tr("general.error", "Error"),
+                tr("player_tab.update_error", f"Unable to update player data: {str(e)}")
             )
     
     def find_and_set_steam_id(self, player_id):
@@ -399,7 +406,7 @@ class PlayerTab(QWidget):
         try:
             # Controlla se l'ID del giocatore è già un ID Steam (inizia con 7656119)
             if player_id and str(player_id).startswith("7656119") and len(str(player_id)) >= 17:
-                print(f"L'ID giocatore {player_id} è già un ID Steam")
+                print(f"Player ID {player_id} is already a Steam ID")
                 steam_id = player_id
             else:
                 # Cerchiamo di recuperare lo Steam ID in modo simile a come fa name.py
@@ -527,278 +534,242 @@ class PlayerTab(QWidget):
             self.avatar_label.setPixmap(QPixmap())
             self.avatar_label.setText("No Image")
         
-    def save_changes(self):
-        """Save changes to player data"""
-        if not self.save_data or not self.current_player_id:
-            QMessageBox.warning(
-                self,
-                tr("general.warning", "Attenzione"),
-                tr("player_tab.no_data", "No save data to update. Please load a save file first.")
-            )
-            return
-            
-        try:
-            print(f"Salvando modifiche per il giocatore {self.current_player_id}...")
-            
-            # Assicuriamoci che le strutture dati necessarie esistano
-            if "dictionaryOfDictionaries" not in self.save_data:
-                self.save_data["dictionaryOfDictionaries"] = {"value": {}}
-            elif "value" not in self.save_data["dictionaryOfDictionaries"]:
-                self.save_data["dictionaryOfDictionaries"]["value"] = {}
-                
-            dict_data = self.save_data["dictionaryOfDictionaries"]["value"]
-            
-            # Assicuriamoci che le strutture per le statistiche del player esistano
-            if "playerStats" not in self.save_data:
-                self.save_data["playerStats"] = {}
-                
-            if self.current_player_id not in self.save_data["playerStats"]:
-                self.save_data["playerStats"][self.current_player_id] = {}
-            
-            stats = self.save_data["playerStats"][self.current_player_id]
-            
-            # Assicuriamoci che esista runStats
-            if "runStats" not in dict_data:
-                dict_data["runStats"] = {}
-                
-            # Dati da modificare
-            level = self.player_level.value()
-            health = self.player_health.value()
-            money = self.player_money.value()
-            strength = self.player_strength.value()
-            agility = self.player_agility.value()
-            intelligence = self.player_intelligence.value()
-            endurance = self.player_endurance.value()
-            extra_jump = self.player_extra_jump.value()
-            launch = self.player_launch.value()
-            map_count = self.player_map_count.value()
-            speed = self.player_speed.value()
-            range_val = self.player_range.value()
-            throw = self.player_throw.value()
-            
-            # Log dei valori da salvare
-            print(f"Valori da salvare - Livello: {level}, Salute: {health}, Soldi: {money}")
-            print(f"Statistiche - Forza: {strength}, Agilità: {agility}, Intelligenza: {intelligence}, Resistenza: {endurance}")
-            print(f"Statistiche aggiuntive - Extra Jump: {extra_jump}, Launch: {launch}, Map Count: {map_count}, Speed: {speed}, Range: {range_val}, Throw: {throw}")
-            
-            # Update stats in the data
-            # Prima proviamo a salvare nelle strutture statistiche appropriate
-            # Nel dizionario principale (dictionaryOfDictionaries)
-            
-            # Aggiorna il livello nel runStats
-            dict_data["runStats"]["level"] = level
-            
-            # Aggiorna la valuta nel runStats
-            dict_data["runStats"]["currency"] = money
-            
-            # Aggiorna la salute
-            if "playerHealth" not in dict_data:
-                dict_data["playerHealth"] = {}
-            dict_data["playerHealth"][self.current_player_id] = health
-            
-            # Aggiorna le statistiche del personaggio
-            stat_mappings = {
-                "playerUpgradeHealth": strength,
-                "playerUpgradeStamina": agility,
-                "playerUpgradeStrength": intelligence,
-                "playerUpgradeSpeed": endurance,
-                "playerUpgradeExtraJump": extra_jump,
-                "playerUpgradeLaunch": launch,
-                "playerUpgradeMapPlayerCount": map_count,
-                "playerUpgradeSpeed": speed,
-                "playerUpgradeRange": range_val,
-                "playerUpgradeThrow": throw
-            }
-            
-            for stat_key, value in stat_mappings.items():
-                if stat_key not in dict_data:
-                    dict_data[stat_key] = {}
-                dict_data[stat_key][self.current_player_id] = value
-            
-            # Aggiorna il playerStats (struttura separata)
-            stats_to_update = {
-                "level": level,
-                "health": health,
-                "money": money,
-                "strength": strength,
-                "agility": agility,
-                "intelligence": intelligence,
-                "endurance": endurance,
-                "extra_jump": extra_jump,
-                "launch": launch,
-                "map_count": map_count,
-                "speed": speed,
-                "range": range_val,
-                "throw": throw
-            }
-            
-            for key, value in stats_to_update.items():
-                stats[key] = value
-            
-            # Add Steam ID to save data if available
-            steam_id = self.steam_id_edit.text().strip()
-            if steam_id:
-                # Store Steam ID in the appropriate place in the save
-                if "playerMetadata" not in self.save_data:
-                    self.save_data["playerMetadata"] = {}
-                
-                if self.current_player_id not in self.save_data["playerMetadata"]:
-                    self.save_data["playerMetadata"][self.current_player_id] = {}
-                
-                # Controlla se è già un dizionario o crea uno nuovo
-                if not isinstance(self.save_data["playerMetadata"][self.current_player_id], dict):
-                    self.save_data["playerMetadata"][self.current_player_id] = {}
-                
-                self.save_data["playerMetadata"][self.current_player_id]["steamId"] = steam_id
-            
-            # Conferma del salvataggio
-            print("Modifiche applicate con successo al modello di dati")
-            self.status_bar.showMessage(tr("player_tab.changes_saved", "Modifiche salvate con successo"))
-            
-            QMessageBox.information(
-                self,
-                tr("general.success", "Successo"),
-                tr("player_tab.changes_saved", "Player data updated successfully!")
-            )
-            
-        except Exception as e:
-            import traceback
-            error_trace = traceback.format_exc()
-            print(f"Errore durante il salvataggio: {str(e)}\n{error_trace}")
-            QMessageBox.critical(
-                self,
-                tr("general.error", "Errore"),
-                tr("player_tab.save_error", f"An error occurred while saving player data: {str(e)}")
-            )
-    
-    def update_data(self, data: Dict[str, Any]):
-        """
-        Update the tab with save data
+    def _update_json_editor(self):
+        mw = self.parent()
+        if mw and hasattr(mw, 'advanced_tab'):
+            mw.advanced_tab.update_json_from_ui()
+
+    # --- Metodi di aggiornamento dati in tempo reale ---
+    def on_player_name_changed(self, value):
+        if self.save_data and self.current_player_id:
+            self.save_data["playerNames"][self.current_player_id] = value
+            from core.logger import logger
+            logger.info(f"Nome giocatore aggiornato: {self.current_player_id} -> {value}")
+            self._update_json_editor()
+
+    def on_player_level_changed(self, value):
+        if self.save_data and self.current_player_id:
+            d = self.save_data.get("dictionaryOfDictionaries", {}).get("value", {})
+            if "runStats" in d:
+                d["runStats"]["level"] = value
+                from core.logger import logger
+                logger.info(f"Livello aggiornato: {self.current_player_id} -> {value}")
+                self._update_json_editor()
+
+    def on_player_health_changed(self, value):
+        if self.save_data and self.current_player_id:
+            d = self.save_data.get("dictionaryOfDictionaries", {}).get("value", {})
+            if "playerHealth" in d:
+                d["playerHealth"][self.current_player_id] = value
+                from core.logger import logger
+                logger.info(f"Salute aggiornata: {self.current_player_id} -> {value}")
+                self._update_json_editor()
+
+    def on_player_money_changed(self, value):
+        if self.save_data and self.current_player_id:
+            d = self.save_data.get("dictionaryOfDictionaries", {}).get("value", {})
+            if "runStats" in d:
+                d["runStats"]["currency"] = value
+                from core.logger import logger
+                logger.info(f"Soldi aggiornati: {self.current_player_id} -> {value}")
+                self._update_json_editor()
+
+    def on_player_strength_changed(self, value):
+        if self.save_data and self.current_player_id:
+            d = self.save_data.get("dictionaryOfDictionaries", {}).get("value", {})
+            if "playerUpgradeStrength" in d:
+                d["playerUpgradeStrength"][self.current_player_id] = value
+                from core.logger import logger
+                logger.info(f"Forza aggiornata: {self.current_player_id} -> {value}")
+                self._update_json_editor()
+
+    def on_player_agility_changed(self, value):
+        if self.save_data and self.current_player_id:
+            d = self.save_data.get("dictionaryOfDictionaries", {}).get("value", {})
+            if "playerUpgradeStamina" in d:
+                d["playerUpgradeStamina"][self.current_player_id] = value
+                from core.logger import logger
+                logger.info(f"Agilità aggiornata: {self.current_player_id} -> {value}")
+                self._update_json_editor()
+
+    def on_player_endurance_changed(self, value):
+        if self.save_data and self.current_player_id:
+            d = self.save_data.get("dictionaryOfDictionaries", {}).get("value", {})
+            if "playerUpgradeSpeed" in d:
+                d["playerUpgradeSpeed"][self.current_player_id] = value
+                from core.logger import logger
+                logger.info(f"Resistenza aggiornata: {self.current_player_id} -> {value}")
+                self._update_json_editor()
+
+    def on_player_extra_jump_changed(self, value):
+        if self.save_data and self.current_player_id:
+            d = self.save_data.get("dictionaryOfDictionaries", {}).get("value", {})
+            if "playerUpgradeExtraJump" in d:
+                d["playerUpgradeExtraJump"][self.current_player_id] = value
+                from core.logger import logger
+                logger.info(f"Extra Jump aggiornato: {self.current_player_id} -> {value}")
+                self._update_json_editor()
+
+    def on_player_launch_changed(self, value):
+        if self.save_data and self.current_player_id:
+            d = self.save_data.get("dictionaryOfDictionaries", {}).get("value", {})
+            if "playerUpgradeLaunch" in d:
+                d["playerUpgradeLaunch"][self.current_player_id] = value
+                from core.logger import logger
+                logger.info(f"Launch aggiornato: {self.current_player_id} -> {value}")
+                self._update_json_editor()
+
+    def on_player_map_count_changed(self, value):
+        if self.save_data and self.current_player_id:
+            d = self.save_data.get("dictionaryOfDictionaries", {}).get("value", {})
+            if "playerUpgradeMapPlayerCount" in d:
+                d["playerUpgradeMapPlayerCount"][self.current_player_id] = value
+                from core.logger import logger
+                logger.info(f"Map Count aggiornato: {self.current_player_id} -> {value}")
+                self._update_json_editor()
+
+    def on_player_speed_changed(self, value):
+        if self.save_data and self.current_player_id:
+            d = self.save_data.get("dictionaryOfDictionaries", {}).get("value", {})
+            if "playerUpgradeSpeed" in d:
+                d["playerUpgradeSpeed"][self.current_player_id] = value
+                from core.logger import logger
+                logger.info(f"Speed aggiornato: {self.current_player_id} -> {value}")
+                self._update_json_editor()
+
+    def on_player_range_changed(self, value):
+        if self.save_data and self.current_player_id:
+            d = self.save_data.get("dictionaryOfDictionaries", {}).get("value", {})
+            if "playerUpgradeRange" in d:
+                d["playerUpgradeRange"][self.current_player_id] = value
+                from core.logger import logger
+                logger.info(f"Range aggiornato: {self.current_player_id} -> {value}")
+                self._update_json_editor()
+
+    def on_player_throw_changed(self, value):
+        if self.save_data and self.current_player_id:
+            d = self.save_data.get("dictionaryOfDictionaries", {}).get("value", {})
+            if "playerUpgradeThrow" in d:
+                d["playerUpgradeThrow"][self.current_player_id] = value
+                from core.logger import logger
+                logger.info(f"Throw aggiornato: {self.current_player_id} -> {value}")
+                self._update_json_editor()
+
+    def refresh_ui_from_data(self):
+        """Aggiorna l'interfaccia utente con i dati del salvataggio"""
+        logger = logging.getLogger(__name__)
+        logger.info("PlayerTab.refresh_ui_from_data - Aggiornamento UI dai dati salvati")
         
-        Args:
-            data: Save data
-        """
-        if data is None:
+        if not self.save_data:
+            logger.warning("PlayerTab.refresh_ui_from_data - Nessun dato disponibile")
             return
+            
         try:
-            self.save_data = data
-            self.player_data = {}
+            # Pulisci il selector e i dati dei giocatori
+            self.player_selector.clear()
             self.players = {}
             
-            # Clear the player selector
-            self.player_selector.clear()
-            
-            # Extract player names and populate the selector
-            if "playerNames" in data:
-                # In R.E.P.O. playerNames può essere:
-                # 1. Dizionario con player_id -> nome
-                # 2. Dizionario con player_id -> oggetto C# Dictionary (structure complessa)
-                # 3. Oggetto con valore in "value"
+            # Verifica la struttura dei dati
+            if "playerNames" not in self.save_data:
+                logger.warning("PlayerTab.refresh_ui_from_data - Structure data not valid: playerNames not found")
+                return
                 
-                # Se playerNames ha una proprietà "value", usa quella
-                player_names_data = data["playerNames"]
-                if isinstance(player_names_data, dict) and "value" in player_names_data:
-                    player_names_data = player_names_data["value"]
+            player_names_data = self.save_data.get("playerNames", {})
+            if isinstance(player_names_data, dict) and "value" in player_names_data:
+                player_names_data = player_names_data["value"]
                 
-                # Ora iteriamo sui giocatori
-                for player_id, player_name in player_names_data.items():
-                    # Estrai il nome del giocatore dalla struttura
-                    display_name = self.extract_player_name(player_name, player_id)
+            # Aggiungi i giocatori al selettore
+            for player_id, player_name in player_names_data.items():
+                try:
+                    display_name = player_name
+                    if not display_name:
+                        display_name = f"Player {player_id}"
                     
-                    # Memorizza e aggiunge al selettore
                     self.players[player_id] = display_name
                     self.player_selector.addItem(display_name, player_id)
-                    
-                    # Debug
-                    print(f"Giocatore trovato: ID={player_id}, Nome={display_name}, Dato originale={player_name}")
+                    logger.info(f"PlayerTab.refresh_ui_from_data - Added player: {player_id} -> {display_name}")
+                except Exception as e:
+                    logger.error(f"PlayerTab.refresh_ui_from_data - Error adding player {player_id}: {str(e)}")
             
-            # Se ci sono giocatori, seleziona il primo e carica i suoi dati
+            # Seleziona il primo giocatore se disponibile
             if self.player_selector.count() > 0:
+                logger.info("PlayerTab.refresh_ui_from_data - Selected first player")
                 self.player_selector.setCurrentIndex(0)
-                
-            # Altrimenti mostra un messaggio
+                # L'aggiornamento avverrà tramite il signal del selettore
             else:
-                QMessageBox.warning(
-                    self,
-                    tr("general.warning", "Attenzione"),
-                    tr("player_tab.no_players", "Nessun giocatore trovato nel salvataggio.")
-                )
-                
+                logger.warning("PlayerTab.refresh_ui_from_data - No players found")
         except Exception as e:
             import traceback
-            traceback_str = traceback.format_exc()
-            print(f"Errore durante l'aggiornamento dei dati: {str(e)}\n{traceback_str}")
-            QMessageBox.warning(
-                self,
-                tr("general.error", "Errore"),
-                tr("player_tab.update_error", f"Failed to update player data: {str(e)}")
-            )
+            logger.error(f"PlayerTab.refresh_ui_from_data - Error: {str(e)}\n{traceback.format_exc()}")
 
-    def extract_player_name(self, player_name_data, player_id):
-        """Estrae il nome del giocatore da varie strutture possibili"""
-        # Caso 1: Stringa semplice
-        if isinstance(player_name_data, str):
-            return player_name_data
+    def extract_value(self, data_dict, default_value=0):
+        """Estrae un valore da un dizionario, gestendo i casi in cui la chiave potrebbe non esistere
+        
+        Args:
+            data_dict: Dizionario da cui estrarre il valore o valore diretto
+            default_value: Valore predefinito da restituire se la chiave non esiste
             
-        # Caso 2: Dizionario con "value"
-        elif isinstance(player_name_data, dict) and "value" in player_name_data:
-            value = player_name_data["value"]
-            if isinstance(value, str):
-                return value
-            elif isinstance(value, dict):
-                # Prova a estrarre il primo valore come nome
-                first_val = next(iter(value.values()), None)
-                if first_val:
-                    return str(first_val)
+        Returns:
+            Valore estratto o default_value se la chiave non esiste
+        """
+        try:
+            if isinstance(data_dict, dict) and self.current_player_id in data_dict:
+                return data_dict[self.current_player_id]
+            elif not isinstance(data_dict, dict):
+                # Se non è un dizionario, restituisci il valore direttamente
+                return data_dict
+            return default_value
+        except Exception as e:
+            logging.getLogger(__name__).error(f"Error in extract_value: {e}")
+            return default_value
+            
+    def extract_player_name(self, player_data, player_id):
+        """Estrae il nome del giocatore dai dati forniti
         
-        # Caso 3: Dizionario C# serializzato 
-        # (Se contiene "System.Collections.Generic.Dictionary", è un riferimento a un oggetto C#)
-        elif isinstance(player_name_data, str) and "System.Collections.Generic.Dictionary" in player_name_data:
-            # Prova a estrarre un nome leggibile
-            match = re.search(r'\[\[(.*?)\]\]', player_name_data)
-            if match:
-                return match.group(1)
-        
-        # Caso fallback: se il valore è un dizionario, prova a prendere il primo valore
-        elif isinstance(player_name_data, dict):
-            # Prendi il primo valore come nome
-            first_val = next(iter(player_name_data.values()), None)
-            if first_val and isinstance(first_val, str):
-                return first_val
-            # Altrimenti prendi la prima chiave
-            first_key = next(iter(player_name_data.keys()), None)
-            if first_key:
-                return str(first_key)
+        Args:
+            player_data: Dati del giocatore, può essere un dizionario o un valore diretto
+            player_id: ID del giocatore, usato come fallback se non è possibile estrarre un nome
+            
+        Returns:
+            Nome del giocatore o player_id come fallback
+        """
+        try:
+            logger = logging.getLogger(__name__)
+            
+            # Se player_data è una stringa, usala direttamente
+            if isinstance(player_data, str):
+                logger.debug(f"Player name found directly: {player_data}")
+                return player_data
                 
-        # Fallback sicuro: usa l'ID del giocatore
-        return f"Giocatore {player_id}"
-
-    def extract_value(self, data, default_value=0):
-        """Estrae un valore numerico da varie strutture dati possibili"""
-        if isinstance(data, (int, float)):
-            return data
-        elif isinstance(data, dict) and "value" in data:
-            # A volte i valori sono incapsulati in un dizionario con chiave "value"
-            return self.extract_value(data["value"], default_value)
-        elif isinstance(data, dict) and len(data) > 0:
-            # Prova a estrarre il primo valore utile da un dizionario
-            for k, v in data.items():
-                if isinstance(v, (int, float)):
-                    return v
-            # Se non trova valori numerici, restituisce il default
-            return default_value
-        elif isinstance(data, str) and data.isdigit():
-            # Converti stringhe numeriche
-            return int(data)
-        else:
-            return default_value
+            # Se player_data è un dizionario, cerca di estrarre il nome
+            elif isinstance(player_data, dict):
+                # Cerca chiavi comuni per i nomi
+                for key in ["name", "displayName", "username", "value"]:
+                    if key in player_data and player_data[key]:
+                        logger.debug(f"Player name found in key '{key}': {player_data[key]}")
+                        return str(player_data[key])
+                
+                # Se c'è un valore diretto per l'ID del giocatore
+                if player_id in player_data:
+                    value = player_data[player_id]
+                    logger.debug(f"Player name found for ID '{player_id}': {value}")
+                    return str(value)
+            
+            # Fallback: usa l'ID del giocatore come nome
+            logger.warning(f"Impossible to extract player name, using ID as fallback: {player_id}")
+            return str(player_id)
+            
+        except Exception as e:
+            logger = logging.getLogger(__name__)
+            logger.error(f"Error during player name extraction: {str(e)}")
+            return str(player_id)
 
 class InventoryTab(QWidget):
     """Tab for inventory management"""
     
-    def __init__(self, parent=None):
+    def __init__(self, save_data, parent=None):
         super().__init__(parent)
-        self.save_data = None
+        self.save_data = save_data
         self.inventory_data = {}
         self.status_bar = None  # Will be set by the main window
         self.init_ui()
@@ -854,15 +825,13 @@ class InventoryTab(QWidget):
         buttons_layout.addWidget(self.add_button)
         
         self.update_button = QPushButton(tr("inventory_tab.update_item", "Update Item"))
-        self.update_button.clicked.connect(self.update_item)
-        buttons_layout.addWidget(self.update_button)
-        
+        self.update_button.setVisible(False)  # Nascondi il pulsante update
         self.remove_button = QPushButton(tr("inventory_tab.remove_item", "Remove Item"))
         self.remove_button.clicked.connect(self.remove_item)
         buttons_layout.addWidget(self.remove_button)
         
         self.save_button = QPushButton(tr("inventory_tab.save_changes", "Save Changes"))
-        self.save_button.clicked.connect(self.save_changes)
+        self.save_button.setVisible(False)  # Nascondi il pulsante save
         buttons_layout.addWidget(self.save_button)
         
         layout.addLayout(buttons_layout)
@@ -870,6 +839,11 @@ class InventoryTab(QWidget):
         
         # Connect signals
         self.inventory_table.itemSelectionChanged.connect(self.on_selection_changed)
+        
+        # --- Aggiornamento in tempo reale ---
+        self.item_name_edit.textChanged.connect(self.on_item_field_changed)
+        self.item_quantity_spin.valueChanged.connect(self.on_item_field_changed)
+        self.item_description_edit.textChanged.connect(self.on_item_field_changed)
         
     def update_translations(self):
         """Aggiorna le traduzioni dell'interfaccia quando cambia la lingua"""
@@ -1107,7 +1081,8 @@ class InventoryTab(QWidget):
             self.inventory_data[item_id]["name"] = self.item_name_edit.text()
             self.inventory_data[item_id]["quantity"] = self.item_quantity_spin.value()
             self.inventory_data[item_id]["description"] = self.item_description_edit.text()
-            
+            self._update_json_editor()
+        
         QMessageBox.information(
             self,
             tr("general.success", "Successo"),
@@ -1149,18 +1124,40 @@ class InventoryTab(QWidget):
                 tr("inventory_tab.item_removed", "Item removed successfully.")
             )
             
-    def save_changes(self):
-        """Salva le modifiche all'inventario"""
-        if not self.save_data:
-            QMessageBox.warning(
-                self,
-                tr("general.warning", "Attenzione"),
-                tr("inventory_tab.no_save_loaded", "Please load a save file first.")
-            )
+    def _update_json_editor(self):
+        mw = self.parent()
+        if mw and hasattr(mw, 'advanced_tab'):
+            mw.advanced_tab.update_json_from_ui()
+
+    def on_item_field_changed(self, *args):
+        row = self.inventory_table.currentRow()
+        if row < 0:
             return
-            
+        item_id = self.item_id_edit.text()
+        if not item_id or item_id not in self.inventory_data:
+            return
+        self.inventory_data[item_id]["name"] = self.item_name_edit.text()
+        self.inventory_data[item_id]["quantity"] = self.item_quantity_spin.value()
+        self.inventory_data[item_id]["description"] = self.item_description_edit.text()
+        # Aggiorna la tabella
+        self.inventory_table.item(row, 1).setText(self.item_name_edit.text())
+        self.inventory_table.item(row, 2).setText(str(self.item_quantity_spin.value()))
+        self.inventory_table.item(row, 3).setText(self.item_description_edit.text())
+        # Aggiorna il JSON editor
+        self._update_json_editor()
+        from core.logger import logger
+        logger.info(f"Inventario aggiornato: {item_id} -> {self.inventory_data[item_id]}")
+        
+        # Aggiorna il JSON in tempo reale
+        self.update_json_from_ui()
+        
+    def update_json_from_ui(self):
+        """Aggiorna il JSON con i dati modificati nell'interfaccia utente"""
         try:
-            # Assicurati che la struttura dati esista
+            if not self.save_data:
+                return
+                
+            # Verifica che i dati abbiano la struttura attesa
             if "dictionaryOfDictionaries" not in self.save_data:
                 self.save_data["dictionaryOfDictionaries"] = {"value": {}}
             elif "value" not in self.save_data["dictionaryOfDictionaries"]:
@@ -1168,42 +1165,143 @@ class InventoryTab(QWidget):
                 
             dict_of_dicts = self.save_data["dictionaryOfDictionaries"]["value"]
             
-            # Aggiorna i dati dell'inventario
+            # Aggiorna i dati degli oggetti nel JSON
             for item_id, item_data in self.inventory_data.items():
-                inventory_key = item_data["key"]
+                key = item_data["key"]
                 
                 # Assicurati che la chiave dell'inventario esista
-                if inventory_key not in dict_of_dicts:
-                    dict_of_dicts[inventory_key] = {}
+                if key not in dict_of_dicts:
+                    dict_of_dicts[key] = {}
                     
-                # Aggiorna o crea l'oggetto
-                dict_of_dicts[inventory_key][item_id] = {
-                    "name": item_data["name"],
-                    "quantity": item_data["quantity"],
-                    "description": item_data["description"]
-                }
-                
-            # Rimuovi gli oggetti che sono stati eliminati
-            for inventory_key in [key for key in dict_of_dicts.keys() if "inventory" in key.lower() or "item" in key.lower()]:
-                for item_id in list(dict_of_dicts[inventory_key].keys()):
-                    if item_id not in self.inventory_data:
-                        del dict_of_dicts[inventory_key][item_id]
-                        
-            QMessageBox.information(
-                self,
-                tr("general.success", "Successo"),
-                tr("inventory_tab.changes_saved", "Inventory changes have been saved to the save file.")
-            )
+                # Imposta o aggiorna l'oggetto con le modifiche
+                if isinstance(dict_of_dicts[key].get(item_id), dict):
+                    # Se l'oggetto esisteva già come dizionario, aggiorna i campi
+                    if "name" in dict_of_dicts[key][item_id]:
+                        dict_of_dicts[key][item_id]["name"] = item_data["name"]
+                    elif "value" in dict_of_dicts[key][item_id] and isinstance(dict_of_dicts[key][item_id]["value"], dict):
+                        if "name" in dict_of_dicts[key][item_id]["value"]:
+                            dict_of_dicts[key][item_id]["value"]["name"] = item_data["name"]
+                            
+                    if "quantity" in dict_of_dicts[key][item_id]:
+                        dict_of_dicts[key][item_id]["quantity"] = item_data["quantity"]
+                    elif "count" in dict_of_dicts[key][item_id]:
+                        dict_of_dicts[key][item_id]["count"] = item_data["quantity"]
+                    elif "value" in dict_of_dicts[key][item_id] and isinstance(dict_of_dicts[key][item_id]["value"], dict):
+                        if "quantity" in dict_of_dicts[key][item_id]["value"]:
+                            dict_of_dicts[key][item_id]["value"]["quantity"] = item_data["quantity"]
+                        elif "count" in dict_of_dicts[key][item_id]["value"]:
+                            dict_of_dicts[key][item_id]["value"]["count"] = item_data["quantity"]
+                            
+                    if "description" in dict_of_dicts[key][item_id]:
+                        dict_of_dicts[key][item_id]["description"] = item_data["description"]
+                    elif "value" in dict_of_dicts[key][item_id] and isinstance(dict_of_dicts[key][item_id]["value"], dict):
+                        if "description" in dict_of_dicts[key][item_id]["value"]:
+                            dict_of_dicts[key][item_id]["value"]["description"] = item_data["description"]
+                else:
+                    # Se l'oggetto non esisteva, crealo come nuova voce diretta
+                    dict_of_dicts[key][item_id] = item_data["quantity"]
+                    
+            # Se c'è un parent con l'advanced tab, aggiorna l'editor JSON
+            self._update_json_editor()
+            
+            from core.logger import logger
+            logger.info("Inventario JSON aggiornato con i dati dell'interfaccia")
             
         except Exception as e:
             import traceback
-            traceback_str = traceback.format_exc()
-            print(f"Errore durante il salvataggio dell'inventario: {str(e)}\n{traceback_str}")
-            QMessageBox.critical(
-                self,
-                tr("general.error", "Errore"),
-                tr("inventory_tab.save_error", f"An error occurred while saving inventory data: {str(e)}")
-            )
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Errore nell'aggiornamento del JSON dall'inventario: {str(e)}\n{traceback.format_exc()}")
+
+    def refresh_ui_from_data(self):
+        """Aggiorna l'interfaccia utente con i dati del salvataggio"""
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info("InventoryTab.refresh_ui_from_data - Aggiornamento UI dai dati salvati")
+        
+        if not self.save_data:
+            logger.warning("InventoryTab.refresh_ui_from_data - Nessun dato disponibile")
+            return
+            
+        try:
+            # Pulisci la tabella e i dati dell'inventario
+            self.inventory_table.setRowCount(0)
+            self.inventory_data = {}
+            
+            # Verifica che i dati abbiano la struttura attesa
+            if "dictionaryOfDictionaries" not in self.save_data or "value" not in self.save_data["dictionaryOfDictionaries"]:
+                logger.warning("InventoryTab.refresh_ui_from_data - Struttura dati non valida")
+                return
+                
+            dict_of_dicts = self.save_data["dictionaryOfDictionaries"]["value"]
+            inventory_keys = [key for key in dict_of_dicts.keys() if "inventory" in key.lower() or "item" in key.lower()]
+            
+            if not inventory_keys:
+                logger.warning("InventoryTab.refresh_ui_from_data - Nessuna chiave di inventario trovata")
+                return
+                
+            # Popola la tabella con gli oggetti dell'inventario
+            for key in inventory_keys:
+                items = dict_of_dicts[key]
+                logger.info(f"InventoryTab.refresh_ui_from_data - Processando la chiave di inventario: {key} con {len(items)} elementi")
+                
+                for item_id, item_value in items.items():
+                    try:
+                        # Estrai i dati dell'oggetto
+                        item_name = item_id
+                        item_quantity = 1
+                        item_description = ""
+                        
+                        if isinstance(item_value, dict):
+                            if "name" in item_value:
+                                item_name = item_value["name"]
+                            elif "value" in item_value and isinstance(item_value["value"], dict) and "name" in item_value["value"]:
+                                item_name = item_value["value"]["name"]
+                                
+                            if "quantity" in item_value:
+                                item_quantity = item_value["quantity"]
+                            elif "count" in item_value:
+                                item_quantity = item_value["count"]
+                            elif "value" in item_value and isinstance(item_value["value"], dict):
+                                if "quantity" in item_value["value"]:
+                                    item_quantity = item_value["value"]["quantity"]
+                                elif "count" in item_value["value"]:
+                                    item_quantity = item_value["value"]["count"]
+                                    
+                            if "description" in item_value:
+                                item_description = item_value["description"]
+                            elif "value" in item_value and isinstance(item_value["value"], dict) and "description" in item_value["value"]:
+                                item_description = item_value["value"]["description"]
+                        
+                        # Normalizza i valori
+                        item_name = str(item_name)
+                        item_quantity = int(item_quantity) if isinstance(item_quantity, (int, float, str)) and str(item_quantity).isdigit() else 1
+                        item_description = str(item_description)
+                        
+                        # Aggiungi l'oggetto alla tabella
+                        row = self.inventory_table.rowCount()
+                        self.inventory_table.insertRow(row)
+                        self.inventory_table.setItem(row, 0, QTableWidgetItem(str(item_id)))
+                        self.inventory_table.setItem(row, 1, QTableWidgetItem(item_name))
+                        self.inventory_table.setItem(row, 2, QTableWidgetItem(str(item_quantity)))
+                        self.inventory_table.setItem(row, 3, QTableWidgetItem(item_description))
+                        
+                        # Memorizza i dati per riferimento futuro
+                        self.inventory_data[item_id] = {
+                            "name": item_name,
+                            "quantity": item_quantity,
+                            "description": item_description,
+                            "key": key
+                        }
+                        
+                        logger.info(f"InventoryTab.refresh_ui_from_data - Aggiunto oggetto: {item_id} -> {item_name} (quantità: {item_quantity})")
+                    except Exception as e:
+                        logger.error(f"InventoryTab.refresh_ui_from_data - Errore elaborazione oggetto {item_id}: {str(e)}")
+            
+            logger.info(f"InventoryTab.refresh_ui_from_data - Completato con {self.inventory_table.rowCount()} oggetti")
+        except Exception as e:
+            import traceback
+            logger.error(f"InventoryTab.refresh_ui_from_data - Errore: {str(e)}\n{traceback.format_exc()}")
 
 class SettingsTab(QWidget):
     """Tab for application settings"""
@@ -1429,7 +1527,7 @@ class SettingsTab(QWidget):
                 json.dump(settings, f, indent=4)
                 
             # Aggiorna le impostazioni del backup manager
-            from ..core.backup import backup_manager
+            from core.backup import backup_manager
             backup_manager.update_settings(settings)
                 
             QMessageBox.information(
@@ -1521,15 +1619,41 @@ class JsonSyntaxHighlighter(QSyntaxHighlighter):
 class AdvancedTab(QWidget):
     """Tab for advanced editing of save data"""
     
-    def __init__(self, parent=None):
+    def __init__(self, save_data, parent=None):
         super().__init__(parent)
-        self.save_data = None
-        self.status_bar = None  # Will be set by the main window
+        self.save_data = save_data
+        self.status_bar = None
         self.init_ui()
-        
-        # Registra per gli aggiornamenti della lingua
         language_manager.add_observer(self.update_translations)
-        
+        # Sincronizzazione bidirezionale
+        self.json_editor.textChanged.connect(self.on_json_edit)
+        self._block_json_update = False
+
+    def on_json_edit(self):
+        if self._block_json_update:
+            return
+        try:
+            new_data = json.loads(self.json_editor.toPlainText())
+            self.save_data.clear()
+            self.save_data.update(new_data)
+            # Aggiorna tutti i tab (player, inventory, ecc.)
+            mw = self.parent()
+            if mw and hasattr(mw, 'player_tab'):
+                mw.player_tab.update_data(self.save_data)
+            if mw and hasattr(mw, 'inventory_tab'):
+                mw.inventory_tab.update_data(self.save_data)
+            # Aggiorna la struttura
+            self.update_structure_viewer(self.save_data)
+        except Exception:
+            pass
+
+    def update_json_from_ui(self):
+        self._block_json_update = True
+        try:
+            self.json_editor.setText(json.dumps(self.save_data, indent=4))
+        finally:
+            self._block_json_update = False
+
     def init_ui(self):
         layout = QVBoxLayout()
         
@@ -1787,3 +1911,26 @@ class AdvancedTab(QWidget):
                 tr("general.error", "Errore"),
                 tr("advanced_tab.json_invalid", f"JSON is not valid: {str(e)}")
             )
+
+    def refresh_ui_from_data(self):
+        """Aggiorna l'interfaccia utente con i dati del salvataggio"""
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info("AdvancedTab.refresh_ui_from_data - Aggiornamento UI dai dati salvati")
+        
+        if not self.save_data:
+            logger.warning("AdvancedTab.refresh_ui_from_data - Nessun dato disponibile")
+            return
+            
+        try:
+            # Formatta e visualizza il JSON
+            json_str = json.dumps(self.save_data, indent=4)
+            self.json_editor.setText(json_str)
+            
+            # Aggiorna la visualizzazione della struttura
+            self.update_structure_viewer(self.save_data)
+            
+            logger.info("AdvancedTab.refresh_ui_from_data - Completato con successo")
+        except Exception as e:
+            import traceback
+            logger.error(f"AdvancedTab.refresh_ui_from_data - Errore: {str(e)}\n{traceback.format_exc()}")

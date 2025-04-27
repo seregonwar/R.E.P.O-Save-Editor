@@ -1,8 +1,69 @@
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, 
                             QScrollArea, QFrame, QTabWidget, QComboBox,
                             QSpinBox, QCheckBox, QGroupBox, QProgressBar)
-from src.ui.styles import WIDGET_STYLES, TEXT_COLOR
 from .modern_widgets import ModernLineEdit, ModernLabel
+
+# Definizione degli stili
+WIDGET_STYLES = {
+    "QGroupBox": """
+        QGroupBox {
+            font-weight: bold;
+            border: 1px solid #2c3e50;
+            border-radius: 5px;
+            margin-top: 15px;
+            padding-top: 15px;
+        }
+        QGroupBox::title {
+            subcontrol-origin: margin;
+            subcontrol-position: top center;
+            padding: 0 10px;
+        }
+    """,
+    "QScrollArea": """
+        QScrollArea {
+            border: none;
+            background-color: transparent;
+        }
+    """,
+    "QComboBox": """
+        QComboBox {
+            border: 1px solid #2c3e50;
+            border-radius: 3px;
+            padding: 3px;
+            min-width: 6em;
+            background-color: #34495e;
+            color: white;
+        }
+        QComboBox::drop-down {
+            subcontrol-origin: padding;
+            subcontrol-position: top right;
+            width: 15px;
+            border-left-width: 1px;
+            border-left-color: #2c3e50;
+            border-left-style: solid;
+        }
+    """,
+    "QSpinBox": """
+        QSpinBox {
+            border: 1px solid #2c3e50;
+            border-radius: 3px;
+            padding: 3px;
+            background-color: #34495e;
+            color: white;
+        }
+    """,
+    "QCheckBox": """
+        QCheckBox {
+            color: white;
+        }
+        QCheckBox::indicator {
+            width: 15px;
+            height: 15px;
+        }
+    """
+}
+
+TEXT_COLOR = "#ecf0f1"  # Colore bianco per il testo
 
 class WorldTab(QWidget):
     def __init__(self, parent=None):
@@ -198,12 +259,22 @@ class AdvancedTab(QWidget):
         self.god_mode.setStyleSheet(WIDGET_STYLES["QCheckBox"])
         cheats_layout.addWidget(self.god_mode)
         
-        # Infinite Resources
-        self.infinite_resources = QCheckBox("Risorse Infinite")
-        self.infinite_resources.setStyleSheet(WIDGET_STYLES["QCheckBox"])
-        cheats_layout.addWidget(self.infinite_resources)
+        # Infinite Money
+        self.infinite_money = QCheckBox("Soldi Infiniti")
+        self.infinite_money.setStyleSheet(WIDGET_STYLES["QCheckBox"])
+        cheats_layout.addWidget(self.infinite_money)
         
-        # Add groups to main layout
+        # Unlock All
+        self.unlock_all = QCheckBox("Sblocca Tutto")
+        self.unlock_all.setStyleSheet(WIDGET_STYLES["QCheckBox"])
+        cheats_layout.addWidget(self.unlock_all)
+        
+        # Max Stats
+        self.max_stats = QCheckBox("Statistiche al Massimo")
+        self.max_stats.setStyleSheet(WIDGET_STYLES["QCheckBox"])
+        cheats_layout.addWidget(self.max_stats)
+        
+        # Add groups to layout
         self.layout.addWidget(game_settings)
         self.layout.addWidget(cheats)
         self.layout.addStretch() 

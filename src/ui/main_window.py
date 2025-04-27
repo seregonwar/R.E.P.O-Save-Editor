@@ -2,30 +2,38 @@
 Finestra principale dell'applicazione
 """
 
-from PyQt6.QtWidgets import (
-    QMainWindow, QTabWidget, QToolBar, QStatusBar, QFileDialog,
-    QMessageBox, QMenu, QMenuBar
-)
-from PyQt6.QtGui import QAction
-from PyQt6.QtGui import QIcon
-from PyQt6.QtCore import Qt, QSize
+import sys
 import os
 import json
-import sys
-import copy
+import logging
+from PyQt6.QtWidgets import (
+    QApplication, QCheckBox, QComboBox, QDoubleSpinBox, QFileDialog, 
+    QFrame, QFormLayout, QGridLayout, QGroupBox, QHeaderView,
+    QHBoxLayout, QLabel, QLineEdit, QListWidget, QMainWindow,
+    QMenu, QMessageBox, QProgressBar, QPushButton, QScrollArea,
+    QSplitter, QSizePolicy, QSpinBox, QTextEdit, QTableWidget,
+    QTableWidgetItem, QTabWidget, QVBoxLayout, QWidget, QToolBar,
+    QStatusBar
+)
+from PyQt6.QtCore import Qt, pyqtSignal, QSize
+from PyQt6.QtGui import QIcon, QPixmap, QImage, QPainter, QPen, QColor, QSyntaxHighlighter, QTextCharFormat, QFont, QAction
+from pathlib import Path
 
-from .tabs import PlayerTab, InventoryTab, SettingsTab, AdvancedTab
-from .styles import apply_style
-from ..core.language import tr, language_manager
-from ..core.backup import backup_manager
+from ui.styles import apply_style
+from ui.components.modern_widgets import ModernButton, ModernLineEdit, ModernLabel
+from ui.tabs import PlayerTab, InventoryTab, AdvancedTab, SettingsTab
+from utils.save_manager import SaveManager
+from core import language_manager, tr
 
+# Configurazione del logger per questo modulo
+logger = logging.getLogger(__name__)
 
 class MainWindow(QMainWindow):
     """Finestra principale dell'applicazione"""
     
     def __init__(self):
         super().__init__()
-        
+            
         # Imposta il titolo della finestra
         self.setWindowTitle("R.E.P.O Save Editor")
         
@@ -35,6 +43,9 @@ class MainWindow(QMainWindow):
         # Dati del salvataggio
         self.save_data = None
         self.save_path = None
+        
+        # Manager for save operations
+        self.save_manager = SaveManager()
         
         # Inizializza l'interfaccia utente
         self.init_ui()
@@ -46,49 +57,51 @@ class MainWindow(QMainWindow):
         """Imposta l'icona della finestra"""
         try:
             # Trova il percorso dell'icona
-            root_dir = os.environ.get("REPO_SAVE_EDITOR_ROOT", os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+            root_dir = os.environ.get("REPO_SAVE_EDITOR_ROOT", os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
             icon_path = os.path.join(root_dir, "assets", "icons", "reposaveeditor.png")
             
             # Verifica se l'icona esiste
             if os.path.exists(icon_path):
                 self.setWindowIcon(QIcon(icon_path))
             else:
-                print(f"Icona non trovata: {icon_path}")
+                logger.warning(f"Icona non trovata: {icon_path}")
         except Exception as e:
-            print(f"Errore durante l'impostazione dell'icona: {str(e)}")
+            logger.error(f"Errore durante l'impostazione dell'icona: {str(e)}")
         
     def init_ui(self):
         """Inizializza l'interfaccia utente"""
-        # Imposta le dimensioni della finestra
-        self.resize(800, 600)
+        self.resize(1000, 700)  # Dimensione maggiore per la nuova UI
         
-        # Crea la barra dei menu
+        # Creazione menu e toolbar
         self.create_menu_bar()
-        
-        # Crea la barra degli strumenti
         self.create_toolbar()
         
-        # Crea la barra di stato
+        # Barra di stato
         self.status_bar = QStatusBar()
         self.setStatusBar(self.status_bar)
         self.status_bar.showMessage(tr("main_window.ready", "Ready"))
         
-        # Crea il widget delle schede
+        # Tab widget per i contenuti
         self.tab_widget = QTabWidget()
         self.tab_widget.setTabPosition(QTabWidget.TabPosition.North)
         self.tab_widget.setMovable(True)
+        self.tab_widget.setDocumentMode(True)  # Aspetto più moderno
         self.setCentralWidget(self.tab_widget)
         
-        # Crea le schede
-        self.player_tab = PlayerTab()
+        # Centralizzazione dati: assicuriamoci che save_data sia inizializzato
+        if self.save_data is None:
+            self.save_data = {}
+            
+        # Inizializzazione dei tab
+        self.player_tab = PlayerTab(self.save_data)
         self.player_tab.status_bar = self.status_bar
         self.tab_widget.addTab(self.player_tab, tr("main_window.player_tab", "Player"))
         
-        self.inventory_tab = InventoryTab()
+        self.inventory_tab = InventoryTab(self.save_data)
         self.inventory_tab.status_bar = self.status_bar
         self.tab_widget.addTab(self.inventory_tab, tr("main_window.inventory_tab", "Inventory"))
         
-        self.advanced_tab = AdvancedTab()
+        self.advanced_tab = AdvancedTab(self.save_data)
         self.advanced_tab.status_bar = self.status_bar
         self.tab_widget.addTab(self.advanced_tab, tr("main_window.advanced_tab", "Advanced"))
         
@@ -111,6 +124,8 @@ class MainWindow(QMainWindow):
         
         self.open_action.setText(tr("main_window.open_action", "Open"))
         self.save_action.setText(tr("main_window.save_action", "Save"))
+        self.save_as_action.setText(tr("main_window.save_as_action", "Save As"))
+        self.about_action.setText(tr("main_window.about_action", "About"))
         
         # Aggiorna la barra di stato
         if self.save_path:
@@ -133,6 +148,10 @@ class MainWindow(QMainWindow):
         self.save_action.triggered.connect(self.save_file)
         self.file_menu.addAction(self.save_action)
         
+        self.save_as_action = QAction(tr("main_window.save_as_action", "Save As"), self)
+        self.save_as_action.triggered.connect(self.save_file_as)
+        self.file_menu.addAction(self.save_as_action)
+        
         # Menu Edit
         self.edit_menu = menu_bar.addMenu(tr("main_window.edit_menu", "Edit"))
         
@@ -143,222 +162,260 @@ class MainWindow(QMainWindow):
         self.help_menu.addAction(self.about_action)
         
     def create_toolbar(self):
-        """Crea la barra degli strumenti"""
+        """Crea la barra degli strumenti moderna"""
         toolbar = QToolBar()
         toolbar.setMovable(False)
-        toolbar.setIconSize(QSize(16, 16))
+        toolbar.setIconSize(QSize(24, 24))  # Icone più grandi per un aspetto moderno
+        toolbar.setStyleSheet("""
+            QToolBar {
+                background-color: #232323;
+                spacing: 5px;
+                padding: 5px;
+                border: none;
+            }
+            
+            QToolButton {
+                background-color: #323232;
+                border-radius: 4px;
+                padding: 5px;
+            }
+            
+            QToolButton:hover {
+                background-color: #3d3d3d;
+            }
+            
+            QToolButton:pressed {
+                background-color: #f0a30a;
+            }
+        """)
         self.addToolBar(toolbar)
         
         # Aggiungi le azioni alla barra degli strumenti
         toolbar.addAction(self.open_action)
         toolbar.addAction(self.save_action)
+        toolbar.addAction(self.save_as_action)
         toolbar.addSeparator()
         
+        # Crea un'azione per mostrare il profilo utente
+        root_dir = os.environ.get("REPO_SAVE_EDITOR_ROOT", os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        user_icon_path = os.path.join(root_dir, "assets", "icons", "user.png")
+        
+        if os.path.exists(user_icon_path):
+            self.user_profile_action = QAction(QIcon(user_icon_path), tr("main_window.user_profile", "User Profile"), self)
+            self.user_profile_action.triggered.connect(self.show_user_profile)
+            toolbar.addAction(self.user_profile_action)
+            
     def open_file(self):
         """Apre un file di salvataggio"""
         try:
-            # Apri il dialogo di selezione del file
             import getpass
             user = getpass.getuser()
             default_dir = fr"C:\\Users\\{user}\\AppData\\LocalLow\\semiwork\\Repo\\saves"
-            file_path, _ = QFileDialog.getOpenFileName(
-                self,
-                tr("main_window.open_file_dialog", "Open Save File"),
-                default_dir,
-                tr("main_window.save_file_filter", "Save Files (*.es3);;All Files (*)")
-            )
             
-            if not file_path:
-                return
+            dialog = QFileDialog(self)
+            dialog.setWindowTitle(tr("main_window.open_file_dialog", "Open Save File"))
+            dialog.setDirectory(default_dir)
+            dialog.setNameFilter(tr("main_window.save_file_filter", "Save Files (*.es3);;All Files (*.*)"))
+            dialog.setFileMode(QFileDialog.FileMode.ExistingFile)
+            # Imposta il filtro per mostrare tutti i file inizialmente
+            dialog.selectNameFilter("All Files (*.*)")
             
-            # Prova prima la decrittazione
-            from src.core.encryption import decrypt_data, EncryptionError, DataError
-            try:
-                save_data = decrypt_data(file_path)
-            except (EncryptionError, DataError):
-                # Se fallisce la decrittazione, prova come JSON normale
-                try:
-                    with open(file_path, "r", encoding="utf-8") as f:
-                        save_data = json.load(f)
-                except UnicodeDecodeError:
-                    QMessageBox.critical(
+            if dialog.exec() == QFileDialog.DialogCode.Accepted:
+                file_paths = dialog.selectedFiles()
+                if file_paths:
+                    file_path = file_paths[0]
+                    logger.info(f"Richiesta apertura file: {file_path}")
+                    
+                    self.save_manager = SaveManager()
+                    success, message = self.save_manager.open_file(file_path)
+                    if not success:
+                        logger.error(f"Errore apertura file da GUI: {message}")
+                        QMessageBox.critical(
+                            self,
+                            tr("main_window.open_error", "Errore apertura file"),
+                            tr("main_window.open_error_message", f"Errore durante l'apertura: {message}")
+                        )
+                        return
+                    
+                    # Ottieni i dati dal SaveManager
+                    save_data = self.save_manager.json_data
+                    logger.info(f"File caricato in GUI: {file_path}")
+                    
+                    # Memorizza i dati
+                    self.save_data = save_data
+                    self.save_path = file_path
+                    
+                    # Aggiorna la barra di stato
+                    self.status_bar.showMessage(tr("main_window.file_loaded", f"File loaded: {file_path}"))
+                    
+                    # Aggiorna i dati nei tab
+                    self.player_tab.save_data = save_data
+                    self.inventory_tab.save_data = save_data
+                    self.advanced_tab.save_data = save_data
+                    
+                    # Popola la UI dai dati caricati
+                    try:
+                        logger.info("Aggiornamento tab giocatore")
+                        self.player_tab.refresh_ui_from_data()
+                    except Exception as e:
+                        logger.error(f"Errore aggiornamento tab giocatore: {str(e)}")
+                        
+                    try:
+                        logger.info("Aggiornamento tab inventario")
+                        self.inventory_tab.refresh_ui_from_data()
+                    except Exception as e:
+                        logger.error(f"Errore aggiornamento tab inventario: {str(e)}")
+                        
+                    try:
+                        logger.info("Aggiornamento tab avanzato")
+                        self.advanced_tab.refresh_ui_from_data()
+                    except Exception as e:
+                        logger.error(f"Errore aggiornamento tab avanzato: {str(e)}")
+                    
+                    # Notifica l'utente
+                    QMessageBox.information(
                         self,
-                        tr("main_window.error", "Errore"),
-                        tr("main_window.decode_error", "Il file selezionato non è un file di testo leggibile (UTF-8). Potrebbe essere corrotto, binario o criptato.")
+                        tr("main_window.file_loaded_title", "File caricato"),
+                        tr("main_window.file_loaded_message", f"File caricato con successo: {file_path}")
                     )
-                    return
-                except json.JSONDecodeError:
-                    QMessageBox.critical(
-                        self,
-                        tr("main_window.error", "Errore"),
-                        tr("main_window.json_error", "Il file selezionato non contiene dati JSON validi.")
-                    )
-                    return
-            except Exception as e:
-                QMessageBox.critical(
-                    self,
-                    tr("main_window.open_error", "Errore apertura file"),
-                    tr("main_window.open_error", f"Errore durante l'apertura o la decrittazione del file: {str(e)}")
-                )
-                return
-            
-            # Memorizza i dati
-            self.save_data = save_data
-            self.save_path = file_path
-            
-            # Aggiorna le schede
-            self.player_tab.update_data(save_data)
-            self.inventory_tab.update_data(save_data)
-            self.advanced_tab.update_data(save_data)
-            
-            # Aggiorna la barra di stato
-            self.status_bar.showMessage(tr("main_window.file_loaded", f"File loaded: {file_path}"))
-            
-            # Avvia il backup automatico
-            backup_manager.start_auto_backup(file_path)
-            
-        except Exception as e:
-            import traceback
-            traceback_str = traceback.format_exc()
-            print(f"Errore durante l'apertura del file: {str(e)}\n{traceback_str}")
-            QMessageBox.critical(
-                self,
-                tr("general.error", "Errore"),
-                tr("main_window.open_error", f"Failed to open file: {str(e)}")
-            )
-            
-    def save_file(self):
-        """Salva il file di salvataggio"""
-        if not self.save_data or not self.save_path:
-            self.save_file_as()
-            return
-            
-        try:
-            # Crea un backup prima di salvare
-            backup_manager.create_backup(self.save_path)
-            
-            # Aggiorna i dati dalle schede
-            old_data = copy.deepcopy(self.save_data)
-            self.save_data = self.advanced_tab.save_data
-            
-            # Salva il file
-            with open(self.save_path, "w", encoding="utf-8") as f:
-                json.dump(self.save_data, f, indent=4)
-                
-            # Aggiorna la barra di stato
-            self.status_bar.showMessage(tr("main_window.file_saved", f"File saved: {self.save_path}"))
-            
-        except Exception as e:
-            import traceback
-            traceback_str = traceback.format_exc()
-            print(f"Errore durante il salvataggio del file: {str(e)}\n{traceback_str}")
-            QMessageBox.critical(
-                self,
-                tr("general.error", "Errore"),
-                tr("main_window.save_error", f"Failed to save file: {str(e)}")
-            )
-            
-    def save_file_as(self):
-        """Salva il file di salvataggio con un nuovo nome"""
-        if not self.save_data:
-            QMessageBox.warning(
-                self,
-                tr("general.warning", "Attenzione"),
-                tr("main_window.no_data", "No save data to save. Please load a save file first.")
-            )
-            return
-            
-        try:
-            # Apri il dialogo di selezione del file
-            file_path, _ = QFileDialog.getSaveFileName(
-                self,
-                tr("main_window.save_file_dialog", "Save File"),
-                "",
-                tr("main_window.save_file_filter", "Save Files (*.es3);;All Files (*)")
-            )
-            
-            if not file_path:
-                return
-                
-            # Assicurati che il file abbia l'estensione .es3
-            if not file_path.endswith(".es3"):
-                file_path += ".es3"
-                
-            # Aggiorna i dati dalle schede
-            self.save_data = self.advanced_tab.save_data
-            
-            # Salva il file
-            with open(file_path, "w", encoding="utf-8") as f:
-                json.dump(self.save_data, f, indent=4)
-                
-            # Aggiorna il percorso del file
-            self.save_path = file_path
-            
-            # Aggiorna la barra di stato
-            self.status_bar.showMessage(tr("main_window.file_saved", f"File saved: {file_path}"))
-            
-            # Avvia il backup automatico
-            backup_manager.start_auto_backup(file_path)
-            
-        except Exception as e:
-            import traceback
-            traceback_str = traceback.format_exc()
-            print(f"Errore durante il salvataggio del file: {str(e)}\n{traceback_str}")
-            QMessageBox.critical(
-                self,
-                tr("general.error", "Errore"),
-                tr("main_window.save_error", f"Failed to save file: {str(e)}")
-            )
-            
-    def closeEvent(self, event):
-        """Gestisce la chiusura della finestra"""
-        # Ferma il thread di backup automatico
-        backup_manager.stop_auto_backup()
-        
-        # Chiedi conferma se ci sono modifiche non salvate
-        if self.save_data and self.save_path:
-            reply = QMessageBox.question(
-                self,
-                tr("main_window.confirm_exit", "Confirm Exit"),
-                tr("main_window.unsaved_changes", "Do you want to save changes before exiting?"),
-                QMessageBox.StandardButton.Save | QMessageBox.StandardButton.Discard | QMessageBox.StandardButton.Cancel,
-                QMessageBox.StandardButton.Save
-            )
-            
-            if reply == QMessageBox.StandardButton.Save:
-                self.save_file()
-                event.accept()
-            elif reply == QMessageBox.StandardButton.Cancel:
-                event.ignore()
+                else:
+                    logger.info("Apertura file annullata dall'utente.")
             else:
-                event.accept()
-        else:
-            event.accept()
+                logger.info("Apertura file annullata dall'utente.")
+        except Exception as e:
+            logger.error(f"Errore inatteso durante l'apertura: {str(e)}")
+            import traceback
+            logger.error(f"Traceback: {traceback.format_exc()}")
+            QMessageBox.critical(
+                self,
+                tr("main_window.open_error", "Errore apertura file"),
+                tr("main_window.open_error_message", f"Errore durante l'apertura: {str(e)}")
+            )
+        
+    def save_file(self):
+        """Salva le modifiche nel file corrente"""
+        if not self.save_path:
+            return self.save_file_as()
             
-    def show_about_dialog(self):
-        """Show the about window"""
-        about_text = (
-            "<h2>R.E.P.O Save Editor</h2>"
-            "<p>Version 1.1.0</p>"
-            "<p>A save editor for R.E.P.O</p>"
-            "<p>Created by SeregonWar</p>"
-            "<p><b>Support the developer:</b></p>"
-            "<p><a href='https://ko-fi.com/seregon'>Ko-Fi</a> | "
-            "<a href='https://paypal.me/seregonwar'>PayPal</a> | "
-            "<a href='https://x.com/SeregonWar'>Twitter</a></p>"
+        try:
+            # Aggiorna i dati con le modifiche dalle diverse schede
+            # Prima sincronizza le modifiche dell'advanced tab poiché gestisce direttamente il JSON
+            if hasattr(self.advanced_tab, 'update_json_from_ui'):
+                self.advanced_tab.update_json_from_ui()
+                
+            # Aggiorna il save_manager con i dati correnti
+            self.save_manager.json_data = self.save_data
+            self.save_manager.save_data = self.save_data
+            
+            # Salva il file
+            success, message = self.save_manager.save_file(self.save_path)
+            if not success:
+                logger.error(f"Errore durante il salvataggio: {message}")
+                QMessageBox.critical(
+                    self, 
+                    tr("main_window.save_error", "Errore di salvataggio"),
+                    tr("main_window.save_error_message", f"Errore durante il salvataggio: {message}")
+                )
+                return False
+                
+            self.status_bar.showMessage(tr("main_window.file_saved", f"File saved: {self.save_path}"))
+            return True
+        except Exception as e:
+            logger.error(f"Errore durante il salvataggio: {str(e)}")
+            QMessageBox.critical(
+                self, 
+                tr("main_window.save_error", "Errore di salvataggio"),
+                tr("main_window.save_error_message", f"Errore durante il salvataggio: {str(e)}")
+            )
+            return False
+    
+    def save_file_as(self):
+        """Salva le modifiche in un nuovo file"""
+        try:
+            dialog = QFileDialog(self)
+            dialog.setWindowTitle(tr("main_window.save_file_dialog", "Save File As"))
+            dialog.setNameFilter(tr("main_window.save_file_filter", "Save Files (*.es3);;All Files (*.*)"))
+            dialog.setFileMode(QFileDialog.FileMode.AnyFile)
+            dialog.setAcceptMode(QFileDialog.AcceptMode.AcceptSave)
+            dialog.setDefaultSuffix("es3")
+            # Imposta il filtro per mostrare tutti i file inizialmente
+            dialog.selectNameFilter("All Files (*.*)")
+            
+            if dialog.exec() == QFileDialog.DialogCode.Accepted:
+                file_paths = dialog.selectedFiles()
+                if file_paths:
+                    file_path = file_paths[0]
+                    
+                    # Se non ha estensione .es3, aggiungerla
+                    if not file_path.lower().endswith('.es3'):
+                        file_path += '.es3'
+                    
+                    # Aggiorna il percorso corrente
+                    self.save_path = file_path
+                    
+                    # Salva nel nuovo percorso
+                    return self.save_file()
+                else:
+                    return False
+            else:
+                return False
+        except Exception as e:
+            logger.error(f"Errore durante il salvataggio: {str(e)}")
+            import traceback
+            logger.error(f"Traceback: {traceback.format_exc()}")
+            QMessageBox.critical(
+                self, 
+                tr("main_window.save_error", "Errore di salvataggio"),
+                tr("main_window.save_error_message", f"Errore durante il salvataggio: {str(e)}")
+            )
+            return False
+        
+    def closeEvent(self, event):
+        """Gestisce la chiusura dell'applicazione"""
+        reply = QMessageBox.question(
+            self, 
+            tr("main_window.confirm_exit", "Confirm Exit"),
+            tr("main_window.confirm_exit_message", "Are you sure you want to exit? Unsaved changes will be lost."),
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No
         )
         
+        if reply == QMessageBox.StandardButton.Yes:
+            event.accept()
+        else:
+            event.ignore()
+            
+    def show_about_dialog(self):
+        """Mostra la finestra di dialogo About"""
         QMessageBox.about(
             self,
-            "About",
-            about_text
+            tr("main_window.about_title", "About R.E.P.O Save Editor"),
+            tr("main_window.about_text", 
+               "<h2>R.E.P.O Save Editor</h2>"
+               "<p>Version 3.0.0</p>"
+               "<p>A save editor for R.E.P.O</p>"
+               "<p>Created by SeregonWar</p>"
+               "<p><b>Support the developer:</b></p>"
+               "<p><a href='https://ko-fi.com/seregon'>Ko-Fi</a> | "
+               "<a href='https://paypal.me/seregonwar'>PayPal</a> | "
+               "<a href='https://x.com/SeregonWar'>Twitter</a></p>")
+        )
+
+    def show_user_profile(self):
+        """Mostra il profilo utente"""
+        QMessageBox.information(
+            self,
+            tr("main_window.user_profile", "User Profile"),
+            tr("main_window.user_profile_text", "User profile feature coming soon!")
         )
 
 def main():
-    from PyQt6.QtWidgets import QApplication
-    import sys
+    """Funzione principale per l'avvio dell'applicazione dalla nuova UI"""
     app = QApplication(sys.argv)
     apply_style(app)
     window = MainWindow()
     window.show()
     sys.exit(app.exec())
+
+if __name__ == "__main__":
+    main()

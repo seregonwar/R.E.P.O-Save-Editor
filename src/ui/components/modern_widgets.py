@@ -4,7 +4,61 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import Qt, QSize
 from PyQt6.QtGui import QIcon, QPixmap
-from src.ui.styles import WIDGET_STYLES, TEXT_COLOR
+from ui.styles import apply_style
+
+# Definizione stili widget e colori
+TEXT_COLOR = "#FFFFFF"
+WIDGET_STYLES = {
+    "QPushButton": """
+        QPushButton {
+            background-color: #f0a30a;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            font-weight: bold;
+        }
+        QPushButton:hover {
+            background-color: #f5b73a;
+        }
+        QPushButton:pressed {
+            background-color: #d09000;
+        }
+        QPushButton:disabled {
+            background-color: #2a2a2a;
+            color: #7f7f7f;
+        }
+    """,
+    "QLabel": """
+        QLabel {
+            color: white;
+        }
+    """,
+    "QLineEdit": """
+        QLineEdit {
+            background-color: #2a2a2a;
+            color: white;
+            border: 1px solid #2a2a2a;
+            padding: 6px;
+            border-radius: 4px;
+        }
+        QLineEdit:focus {
+            border: 1px solid #2a82da;
+        }
+    """,
+    "QProgressBar": """
+        QProgressBar {
+            background-color: #2a2a2a;
+            color: white;
+            border-radius: 4px;
+            text-align: center;
+        }
+        QProgressBar::chunk {
+            background-color: #f0a30a;
+            border-radius: 4px;
+        }
+    """
+}
 
 class ModernButton(QPushButton):
     """Pulsante moderno con stile personalizzato"""
