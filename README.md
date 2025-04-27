@@ -14,6 +14,9 @@
 </div>
 
 ---
+> ⚠️ **Warning**  
+> Versions **1.0.0** and **2.0.0** have a critical issue when saving files.  
+> Please use **only the latest available version** to avoid problems!
 
 ## 🚀 Overview
 
