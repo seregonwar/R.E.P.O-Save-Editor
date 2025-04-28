@@ -9,7 +9,7 @@
 
 **A powerful editor for R.E.P.O save files**
 
-<img src="https://github.com/seregonwar/R.E.P.O-Save-Editor/blob/main/assets/icons/reposaveeditor.png" alt="R.E.P.O Save Editor logo" width="512">
+<img src="https://github.com/seregonwar/R.E.P.O-Save-Editor/blob/main/src/assets/icons/reposaveeditor.png" alt="R.E.P.O Save Editor logo" width="512">
 
 </div>
 
