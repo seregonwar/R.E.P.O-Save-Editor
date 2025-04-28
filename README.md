@@ -52,22 +52,7 @@ The application has been designed with a modern, intuitive, and elegant interfac
   </tr>
   <tr>
     <td>
-      <h3>🎮 Game Progression</h3>
-      <ul>
-        <li>Complete or reset quests</li>
-        <li>Unlock map areas</li>
-        <li>Modify event states</li>
-      </ul>
-    </td>
-    <td>
-      <h3>⚔️ Skills and Enhancements</h3>
-      <ul>
-        <li>Unlock new skills</li>
-        <li>Upgrade skill levels</li>
-        <li>Customize combat parameters</li>
-      </ul>
-    </td>
-  </tr>
+
 </table>
 
 ## 🖥️ Screenshot
