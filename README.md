@@ -1,4 +1,4 @@
-# <img src="https://github.com/seregonwar/R.E.P.O-Save-Editor/blob/main/assets/icons/reposaveeditor.png" alt="Icon" width="40" style="vertical-align: middle;"> R.E.P.O Save Editor
+# <img src="https://github.com/seregonwar/R.E.P.O-Save-Editor/blob/main/src/assets/icons/reposaveeditor.png" alt="Icon" width="40" style="vertical-align: middle;"> R.E.P.O Save Editor
 
 <div align="center">
 
