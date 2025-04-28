@@ -21,7 +21,7 @@ except ImportError:
 APP_NAME = "REPO Save Editor"
 APP_VERSION = "1.1.0"
 MAIN_SCRIPT = "src/main.py"
-ICON_PATH = "assets/icons/reposaveeditor.png"
+ICON_PATH = "src/assets/icons/reposaveeditor.png"
 
 # PyInstaller options
 PYINSTALLER_ARGS = [
