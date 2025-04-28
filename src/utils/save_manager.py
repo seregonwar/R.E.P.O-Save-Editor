@@ -29,7 +29,7 @@ if DEBUGLEVEL:
     logger.setLevel(DEBUGLEVEL)
 
 # Creare la directory cache se non esiste
-CACHE_DIR = Path.home() / ".cache" / "noedl.xyz"
+CACHE_DIR = Path.home() / ".cache" / "seregonwar"
 CACHE_DIR.mkdir(parents=True, exist_ok=True)
 
 if DEBUGLEVEL:
