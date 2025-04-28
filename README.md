@@ -2,7 +2,7 @@
 
 <div align="center">
 
-![GitHub release](https://img.shields.io/badge/version-1.1.0-E69F00.svg?style=for-the-badge)
+![GitHub release](https://img.shields.io/badge/version-3.0.0-E69F00.svg?style=for-the-badge)
 ![Platform](https://img.shields.io/badge/platform-Windows_|_Linux_|_macOS-232323.svg?style=for-the-badge)
 ![Python](https://img.shields.io/badge/python-3.8+-E69F00.svg?style=for-the-badge&logo=python&logoColor=white)
 ![Github All Releases](https://img.shields.io/github/downloads/seregonwar/R.E.P.O-Save-Editor/total.svg)
